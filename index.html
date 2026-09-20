@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets the play screen reach under the notch; the turn
+     strip carries env(safe-area-inset-top) in its own padding so the content
+     still clears it. Without cover, the strip sits below a grey bar. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0B0A0F">
+<meta name="description" content="Court Piece (Rang) for four players across four phones. No accounts, no install, no server.">
+
+<title>Court Piece</title>
+
+<!-- EVERY PATH IN THIS FILE IS RELATIVE. The app is served from a GitHub Pages
+     subpath (/courtpiece/), so a leading slash would resolve to the domain root
+     and 404 for every visitor while working perfectly on localhost. -->
+<link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+<!-- iOS ignores the manifest's icons for "Add to Home Screen" and ignores SVG
+     entirely, so the 192 PNG is named here as well. It is the same mark from
+     the same source — see scripts/gen-icons.js. -->
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="manifest" href="./manifest.webmanifest">
+
+<!-- Fonts are the one thing fetched from a third party, and they are fetched in
+     a way that cannot block the game: preconnect warms the connection, and the
+     stylesheet has no render-blocking fallback because every family below is
+     declared with a local system stack after it in styles.css. A visitor with
+     the connection blocked gets Georgia and system-ui, which is a different
+     look and a working game. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600&display=swap">
+
+<link rel="stylesheet" href="./css/styles.css">
+
+<!-- PeerJS, pinned. Provides window.Peer — WebRTC signalling and the data
+     channel the whole peer-to-peer transport is built on. See js/net.js.
+
+     The one third-party SCRIPT in the app, and the only thing here that is not
+     served from this repo. It is a CDN tag rather than an npm dependency
+     because there is no build step: PeerJS ships as a UMD bundle, so importing
+     it as a module would mean either a bundler or vendoring a minified file
+     into the repo, and both are ruled out.
+
+     Pinned to an exact version with no range, deliberately. A floating tag
+     would let a third party change the code running on the page — and this is
+     the script that handles every byte from every other device.
+
+     NOT async and NOT defer: js/main.js reads window.Peer, and the classic
+     script above a module is guaranteed to have executed first. It is ~70 KB
+     gzipped, which costs a fraction of the fonts already above it.
+
+     If it fails to load — offline first visit, a blocked CDN, a content
+     blocker — the game still boots. net.js checks for window.Peer and reports
+     a readable error instead of throwing out of a button. -->
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+  <div id="app" class="app-root"></div>
+
+  <!-- Fine print. Deliberately OUTSIDE #app, for the same reason as #announce
+       below: render() in js/ui.js opens with clear(root), which strips every
+       child of #app on every single draw. A footer inside it would survive
+       exactly one frame, then vanish the next time anybody played a card. -->
+  <footer class="site-foot">
+    <p class="visitor-counter" hidden>
+      <span id="visitor-count" class="visitor-count">—</span> visitors
+    </p>
+    <button type="button" id="clear-cache" class="cache-reset">Clear cache &amp; reload</button>
+  </footer>
+
+  <!-- Screen-reader announcements. Deliberately OUTSIDE #app: a live region
+       only fires when text changes inside a node that was ALREADY in the
+       document, and #app is emptied and rebuilt on every render — so a live
+       region inside it would be a brand new, permanently silent node. -->
+  <div id="announce" class="sr-only" role="status" aria-live="polite"></div>
+
+  <noscript>This game requires JavaScript to run.</noscript>
+  <script type="module" src="./js/main.js"></script>
+
+  <!-- Analytics beacon. Shared GoatCounter site across these projects on
+       purpose: counts are per-path, so this repo separates itself by its own
+       pathname. NOT precached and not routed by the service worker — a beacon
+       answered from cache records nothing. -->
+  <script
+    data-goatcounter="https://yvj.goatcounter.com/count"
+    async
+    src="//gc.zgo.at/count.js">
+  </script>
+
+  <!-- Footer behaviour. A classic inline script, NOT a module, and deliberately
+       not part of js/main.js's import graph.
+
+       The reason is the reset button. The failure it exists to rescue is a
+       half-applied cache generation — a new main.js served against a cache
+       missing one of its imports — which boots to a blank screen. If the escape
+       hatch shipped inside that same import graph it would be dead in precisely
+       the situation it exists for. Kept here, it still works when nothing else
+       on the page does. -->
+  <script>
+  (function () {
+    // --- Visitor counter ---------------------------------------------------
+    function showVisitorCount() {
+      const box = document.querySelector('.visitor-counter');
+      const out = document.getElementById('visitor-count');
+      if (!box || !out) return;
+
+      // Derive the host from the beacon tag, so the site lives in one place.
+      const tag = document.querySelector('script[data-goatcounter]');
+      const endpoint = tag && tag.dataset.goatcounter;
+      if (!endpoint) return;
+
+      // Per-path, NOT /counter/TOTAL.json — TOTAL sums every page on the
+      // GoatCounter site and would report the sibling games' traffic as if it
+      // belonged to this one.
+      //
+      // Read live rather than pinned to a constant, because this app has no
+      // client-side routing: no pushState, no hash routing, and no other read
+      // of location.pathname anywhere in js/. Screens are swapped by
+      // re-rendering #app, so the path never moves under us. It does differ
+      // between local dev at "/" and Pages at "/courtpiece/", and those are
+      // genuinely different counts.
+      const path = window.location.pathname;
+
+      // ?start= is a documented parameter (all-time is the default, so this
+      // changes nothing about WHAT is counted) that is also part of the
+      // response's cache key. Pinned for one reason: a path with no data yet
+      // answers 404, and that 404 is cached for up to four hours — so a fresh
+      // deploy can sit on "no data" for hours after the first real visit. A
+      // fixed date predating this project's first pageview sidesteps it, and
+      // being one constant means every visitor shares one cached response.
+      // NEVER a rolling period like `week`: that silently stops being all-time.
+      const START = '2026-01-01';
+
+      fetch(`${endpoint.replace(/\/count$/, '')}/counter/${encodeURIComponent(path)}.json?start=${START}`)
+        .then((res) => (res.ok ? res.json() : Promise.reject(new Error('bad status'))))
+        .then((data) => {
+          // `count` arrives pre-formatted with thousands separators ("1,234").
+          if (data && data.count != null) {
+            out.textContent = String(data.count);
+            box.hidden = false;
+          }
+        })
+        .catch(() => { /* purely decorative: stay hidden on every failure */ });
+    }
+
+    // --- Clear cache & reload ----------------------------------------------
+    function wireCacheReset() {
+      const btn = document.getElementById('clear-cache');
+      if (!btn) return;
+
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Clearing…';
+
+        try {
+          // CACHE STORAGE AND SERVICE WORKERS ONLY. This must never touch
+          // localStorage, which holds two things that cannot be rebuilt:
+          //
+          //   courtpiece.clientId — the random 128-bit secret this browser
+          //     proves itself with (js/util.js). It is the ONLY thing a seat in
+          //     a live game is bound to. Nothing re-issues it: a fresh id is
+          //     simply a different device, so the host refuses the reclaim and
+          //     the player is locked out of their own seat mid-deal.
+          //
+          //   courtpiece.engine — the host's snapshot of authoritative game
+          //     state. In peer-to-peer the host's device holds the only copy
+          //     that exists, so clearing it there ends the game for all four
+          //     players, not just whoever pressed the button.
+          if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+          // Drop the controlling worker too, so the reload comes off the
+          // network rather than from a worker still holding in-memory state.
+          if (navigator.serviceWorker) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+          }
+        } catch (_) {
+          // A partial clear is still worth reloading after — fall through
+          // rather than leaving the button stuck on "Clearing…".
+        }
+
+        // Plain reload, NO cache-busting query string: count.js files pageviews
+        // under pathname + search, so a ?v=… would log every reset as a brand
+        // new page and pollute the stats.
+        window.location.reload();
+      });
+    }
+
+    showVisitorCount();
+    wireCacheReset();
+  })();
+  </script>
+</body>
+</html>

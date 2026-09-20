@@ -1,0 +1,873 @@
+/* ===========================================================================
+   styles.css — Minimalist, mobile-first, dark card-table aesthetic.
+
+   One accent only (crimson). Three type roles: Playfair (display), JetBrains
+   Mono (labels, codes, buttons), Inter (body). Token names are identical to
+   sequence/css/styles.css so the two stylesheets can be read side by side and
+   a fix in one can be carried to the other without translation.
+
+   THE TWO SURFACES. Everything is dark felt except card faces, which are
+   ivory card stock. That is not decoration — a rank has to be legible at 40px
+   on a phone, and ivory-on-dark is how the physical game already solves it.
+
+   THE ONE COLOUR RULE THAT MATTERS. --accent (crimson) means "interactive or
+   yours". --card-red means "this suit is a red suit". They must never be
+   confusable, because both are on screen constantly, which is why --card-red
+   is a much browner, darker brick than the accent.
+   =========================================================================== */
+
+:root {
+  /* Dark neutral with a plum cast rather than sequence's felt green: crimson
+     on green reads as Christmas, and the accent has to be the loudest thing
+     on the page. */
+  --bg:        #0B0A0F;
+  --bg-glow:   #1C1218;
+  --surface:   #131218;
+  --surface-2: #1A1820;
+  --border:      rgba(226, 70, 79, 0.22);
+  --border-soft: rgba(255, 255, 255, 0.07);
+
+  --accent:     #E2464F;
+  /* Dark ink on the accent, not white: white on this crimson is 4.03:1, which
+     misses AA for the button labels that sit on it. This clears 4.6:1. */
+  --accent-ink: #1A0608;
+  --accent-dim: rgba(226, 70, 79, 0.12);
+
+  --text:      #F2EDEE;
+  --muted:     #9A94A0;
+
+  --warn:      #FFB02E;
+  --warn-dim:  rgba(255, 176, 46, 0.14);
+  /* --warn is tuned for dark felt; on ivory card stock it reads at 1.7:1.
+     This is the same amber darkened to clear 4.5:1 against a card face. */
+  --warn-ink:  #7A4A00;
+
+  /* Teams. You are always --us, whichever seat you actually hold, because the
+     scoreboard says "Us" and "Them" rather than naming teams the player would
+     have to keep straight. Teal against crimson stays separable under the
+     common red-green deficiencies — and it is never the only signal anyway,
+     since both pills are labelled. */
+  --us:        #E2464F;
+  --us-dim:    rgba(226, 70, 79, 0.14);
+  --them:      #49B6A8;
+  --them-dim:  rgba(73, 182, 168, 0.14);
+
+  /* Card stock — the one deliberately light surface. */
+  --card:         #F2EDE3;
+  --card-2:       #E2DACB;
+  --card-ink:     #23282C;
+  --card-red:     #B03A2E;
+  /* A card you are holding but may not play. Greyed stock with DARKER ink, not
+     faded ink: you still have to read an unplayable card to plan around it, and
+     fading --card-red puts it under 4.5:1 immediately. */
+  --card-off:     #BCB6AA;
+  --card-ink-off: #3A3E42;
+  --card-red-off: #7A2A20;
+
+  --radius:    14px;
+  --maxw:      640px;
+
+  --mono:  'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif: 'Playfair Display', Georgia, serif;
+  --sans:  'Inter', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background:
+    radial-gradient(120% 80% at 50% -10%, var(--bg-glow) 0%, var(--bg) 55%) fixed;
+  /* Held on body rather than .app-root because .site-foot is a SIBLING of
+     #app — it has to be, since render() empties #app on every draw — and a
+     full-height #app would push the footnote a whole viewport down the page
+     instead of letting it sit on the next line. */
+  min-height: 100dvh;
+}
+
+.shell {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: max(28px, env(safe-area-inset-top)) 20px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: fade 0.35s ease;
+}
+
+/* The play screen, where vertical space is not free. The turn strip is flush
+   to the top edge and carries the notch inset in its own padding, so the
+   shell's top padding would only push a pinned bar away from the edge it is
+   pinned to. The gap shrinks because the table has to fit between two sticky
+   bars rather than breathe in a column, and the bottom padding goes because
+   the hand dock is the bottom of the screen. */
+.shell-play {
+  padding: 0 20px 0;
+  gap: 10px;
+  min-height: 100dvh;
+}
+
+/* Set by main.js when a render replaces a screen with the SAME screen — a
+   state update rather than a transition. Fading the whole page in every time
+   anybody played a card made the table strobe. */
+.app-root.rerender .shell { animation: none; }
+
+@keyframes fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* --- Wordmark ------------------------------------------------------------ */
+.wordmark {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-transform: uppercase;
+}
+.wordmark-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+.wordmark-text { flex: 0 0 auto; }
+
+.help-btn {
+  margin-left: auto;
+  width: 30px; height: 30px;
+  flex: none;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-family: var(--serif);
+  font-size: 15px;
+  cursor: pointer;
+}
+.help-btn:hover { background: var(--accent-dim); }
+
+/* --- Type ---------------------------------------------------------------- */
+.title {
+  font-family: var(--serif);
+  font-size: clamp(30px, 9vw, 42px);
+  font-weight: 700;
+  line-height: 1.04;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.subtitle { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.section-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+
+/*
+   A standing condition about the network — today only "PeerJS did not load".
+   Amber and not crimson: crimson is --accent here, the colour of every live,
+   good thing on the page (your turn, the primary button, the wordmark dot), so
+   a red warning would read as an invitation. --warn is the one hue reserved
+   for "this is not right" and it is already doing that job on .prompt.error
+   and the hidden-rung chip.
+
+   Boxed rather than a bare line, unlike .prompt.error, because it sits between
+   the subtitle and a form field on the home screen. Coloured text alone there
+   is just another paragraph; the tinted box is what separates it from the
+   sales pitch above it.
+
+   Full stop and not a colour-only signal: the text says what is wrong and what
+   to do about it, so the box survives a monochrome screenshot and a reader who
+   sees no colour at all.
+*/
+.net-banner {
+  margin: 0;
+  border: 1px solid var(--warn);
+  border-radius: 10px;
+  background: var(--warn-dim);
+  color: var(--warn);
+  padding: 11px 13px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+.btn {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  /* 46px, not 44: the WCAG floor is the floor, and this is a game played with
+     a thumb on a moving train. */
+  min-height: 46px;
+  padding: 0 18px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.08s;
+}
+.btn:hover:not(:disabled) { background: var(--surface); border-color: var(--accent); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+
+.btn-ghost { background: transparent; }
+.btn-danger { border-color: var(--warn); color: var(--warn); }
+.btn-danger:hover:not(:disabled) { background: var(--warn-dim); border-color: var(--warn); }
+
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-row .btn { flex: 1 1 auto; }
+
+/* --- Fields -------------------------------------------------------------- */
+.field { display: flex; flex-direction: column; gap: 7px; }
+.input {
+  font-family: var(--sans);
+  font-size: 16px;   /* 16px or iOS zooms the whole page on focus */
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 13px 14px;
+  min-height: 48px;
+  width: 100%;
+}
+.input:focus { outline: none; border-color: var(--accent); }
+.input-code {
+  font-family: var(--mono);
+  font-size: 26px;
+  letter-spacing: 0.4em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.card-panel {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* --- Lobby: the seats --------------------------------------------------- */
+.seat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.seat-row {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--team, var(--border-soft));
+  border-radius: 10px;
+  padding: 11px 13px;
+  min-height: 52px;
+}
+.seat-row.empty { border-left-color: var(--border-soft); opacity: 0.75; }
+.seat-row.you { border-color: var(--accent); }
+.seat-index {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  color: var(--muted); text-transform: uppercase;
+  min-width: 52px;
+}
+.seat-name { font-size: 15px; font-weight: 500; flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat-tag {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted);
+  border: 1px solid var(--border-soft); border-radius: 5px; padding: 3px 6px;
+}
+.seat-tag.you { color: var(--accent); border-color: var(--accent); }
+
+/* Partnership is fixed and opposite, which is the single most common thing a
+   new player gets wrong. The lobby draws it rather than explaining it. */
+.pairing-note {
+  font-size: 12px; color: var(--muted); line-height: 1.5;
+  display: flex; align-items: center; gap: 8px;
+}
+.team-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--team, var(--muted)); flex: none; }
+
+/* --- Lobby: rule steppers ----------------------------------------------- */
+/* Wraps rather than squeezes. Two-option rows sit on one line at any phone
+   width, but the court target offers four and there is not room for both it
+   and a readable sentence at 375px — so the buttons drop to their own line
+   once the explanation is down to its last 150px. The alternative, letting
+   the text column collapse, turned a one-line hint into six words a line. */
+.rule-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.rule-row:last-child { border-bottom: none; }
+.rule-text { flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rule-name { font-size: 14px; font-weight: 500; }
+.rule-hint { font-size: 12px; color: var(--muted); line-height: 1.45; }
+
+.choice-group { display: flex; gap: 6px; flex: none; }
+.choice {
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  min-width: 42px; min-height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  background: transparent; color: var(--muted);
+  cursor: pointer;
+}
+.choice[aria-pressed="true"] {
+  border-color: var(--accent); color: var(--accent); background: var(--accent-dim);
+}
+.choice:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* --- Play: the turn strip ----------------------------------------------- */
+/* Flush to the top edge, carrying the notch inset itself. Sticky so the state
+   of play is readable while the hand is being studied. */
+.turn-strip {
+  position: sticky; top: 0; z-index: 6;
+  margin: 0 -20px;
+  padding: max(10px, env(safe-area-inset-top)) 20px 10px;
+  display: flex; align-items: baseline; gap: 8px;
+  background: linear-gradient(to bottom, var(--bg) 60%, rgba(11, 10, 15, 0.8));
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border-soft);
+}
+/* The match target is a label; the standing is a number. Setting them in the
+   two different faces keeps "First court wins 0–0" from reading as one phrase,
+   which at this size it otherwise does. The target ellipses before the
+   standing does, because the standing is the half that changes. */
+.turn-strip .section-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.match-standing {
+  font-family: var(--serif); font-size: 13px; font-weight: 700;
+  color: var(--text); flex: none;
+}
+.turn-state {
+  margin-left: auto; flex: none;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--muted);
+}
+.turn-state.yours { color: var(--accent); }
+/* The pulse is the peripheral cue that it is on you — the text alone is easy
+   to miss when the eye is on thirteen cards. */
+.turn-state.yours::before {
+  content: ''; display: inline-block;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); margin-right: 7px;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* Reconnecting. Gets its own dot like .yours, but breathing slowly instead of
+   pulsing: the fast pulse means "act now", and this means the opposite — the
+   table is still there, nothing you tap will land, wait. Amber rather than the
+   accent so the two are not confusable at a glance across a dim room. */
+.turn-state.stale { color: var(--warn); }
+.turn-state.stale::before {
+  content: ''; display: inline-block;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--warn); margin-right: 7px;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+@keyframes breathe { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.3; } }
+
+/* --- Play: the scoreboard ----------------------------------------------- */
+.scoreboard {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+}
+.score-pill {
+  display: flex; align-items: baseline; gap: 7px;
+  border: 1px solid var(--team); background: var(--team-dim);
+  border-radius: 9px; padding: 6px 10px;
+}
+.score-pill .who {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--text);
+}
+.score-pill .num { font-family: var(--serif); font-size: 18px; font-weight: 700; line-height: 1; }
+/* The target, set small and quiet. Seven of thirteen is the rule everyone new
+   to the game forgets, and carrying it next to the count means nobody has to
+   remember whether the finish line is seven or nine. */
+.score-pill .of {
+  font-family: var(--mono); font-size: 9px; color: var(--muted);
+  margin-left: -3px;
+}
+
+/* The trump. A chip rather than a line of text because it is consulted dozens
+   of times a deal and has to be findable without reading. */
+.rung-chip {
+  display: flex; align-items: center; gap: 6px;
+  margin-left: auto;
+  border: 1px solid var(--border); border-radius: 9px;
+  padding: 6px 10px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.rung-chip .glyph { font-size: 17px; line-height: 1; color: var(--text); }
+.rung-chip .glyph.red { color: #FF6B6B; }   /* on dark felt, not card stock */
+/* Hidden Rung before the reveal. Dashed and amber so it reads as "pending",
+   and the glyph is a hatched block rather than a suit — there is nothing
+   truthful to draw here, and a placeholder suit would be a lie. */
+.rung-chip.hidden-rung { border-color: var(--warn); border-style: dashed; color: var(--warn); }
+.rung-chip.hidden-rung .glyph { color: var(--warn); }
+
+.last-chip {
+  border: 1px solid var(--border-soft); border-radius: 9px;
+  background: transparent; color: var(--muted);
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 7px 9px; min-height: 34px; cursor: pointer;
+}
+.last-chip:hover, .last-chip[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.last-chip:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* --- Play: the table ---------------------------------------------------- */
+/*
+   Seats sit where the player sits, relative to YOU. You are always at the
+   bottom; your partner is always opposite. Seat indices are never rendered.
+
+   THE GEOMETRY IS WHY THE GAME READS AS ANTICLOCKWISE. Seats are numbered
+   clockwise, so from your seat S the screen is: bottom S, left S+1, top S+2,
+   right S+3. nextSeat() subtracts one, so play goes S -> S+3 -> S+2 -> S+1:
+   bottom, right, top, left. That is anticlockwise on screen, and it falls out
+   of the numbering rather than being arranged by hand — see the seat-order
+   test in scripts/test-engine.mjs, which fails if anybody renumbers.
+*/
+.table {
+  display: grid;
+  grid-template-columns: minmax(48px, 62px) 1fr minmax(48px, 62px);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    ".        partner  ."
+    "left     trick    right"
+    ".        youslot  .";
+  gap: 8px;
+  align-items: center;
+  justify-items: center;
+  padding: 6px 0 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.seat {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 7px 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.seat.partner { grid-area: partner; }
+.seat.mine    { grid-area: youslot; }
+.seat.left    { grid-area: left;  flex-direction: column; gap: 4px; padding: 9px 5px; text-align: center; }
+.seat.right   { grid-area: right; flex-direction: column; gap: 4px; padding: 9px 5px; text-align: center; }
+
+/* Whose move it is. A left border on the horizontal plate, a full ring on the
+   narrow ones — the same signal shaped to the plate it is on. */
+.seat.acting { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px -6px var(--accent); }
+.seat.offline { opacity: 0.5; }
+
+.seat-who { font-size: 13px; font-weight: 500; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.seat.left .seat-who, .seat.right .seat-who { font-size: 11px; }
+.seat-meta {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+  color: var(--muted); display: flex; align-items: center; gap: 4px;
+}
+/* The side plates get a 62px column at most, and a dealer plate carries four
+   things at once (dot, card count, DEALER, BOT). They wrap onto a second line
+   rather than overflow: there is vertical room to spare beside the trick and
+   none at all across. */
+.seat.left .seat-meta, .seat.right .seat-meta { flex-wrap: wrap; justify-content: center; }
+/* Cards still in that hand — the one number about another player that is both
+   public and not already on screen somewhere else. Trick counts live in the
+   scoreboard, where there are two of them rather than four. */
+.seat-meta .count { color: var(--text); font-weight: 700; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--them); flex: none; }
+.status-dot.off { background: var(--muted); }
+.bot-tag {
+  font-family: var(--mono); font-size: 8px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted);
+  border: 1px solid var(--border-soft); border-radius: 4px; padding: 1px 4px;
+}
+/* A bot mid-decision. Says the table is alive rather than stuck. */
+.seat.thinking .seat-meta::after {
+  content: '•••'; color: var(--accent); letter-spacing: 0.1em;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+/* The trick. A 3x3 so each played card sits on the side of whoever played it,
+   which is most of what makes the direction of play legible without an arrow.
+
+   `.trick-grid`, not `.trick`, and the name is load-bearing. Log lines carry
+   their event kind as a class, so a line about a trick is `.log-line.trick` —
+   which a bare `.trick` rule matches. It did: every trick in the log grew to
+   190px and sprouted an ↺ from the ::before below. Anything named after a
+   domain noun here will eventually collide with a class named after the same
+   noun somewhere else, so layout selectors say what they LAY OUT. */
+.trick-grid {
+  grid-area: trick;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    ".      t-top    ."
+    "t-left t-mid    t-right"
+    ".      t-bottom .";
+  gap: 4px;
+  place-items: center;
+  width: 100%;
+  min-height: 190px;
+  /* An <ol>, because the order the four slots are written in IS the order the
+     cards were played — so a screen reader gets the play order for free and
+     the numbered pips are confirmation rather than the only carrier. The
+     markers go, and the UA indent with them, or the grid starts 40px right. */
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.trick-slot.top    { grid-area: t-top; }
+.trick-slot.left   { grid-area: t-left; }
+.trick-slot.right  { grid-area: t-right; }
+.trick-slot.bottom { grid-area: t-bottom; }
+
+/* The anticlockwise mark, sat in the middle of the diamond the cards orbit.
+   A pseudo-element rather than a node, so the <ol> above contains exactly the
+   four slots and nothing has to be hidden from the list count. (::before on a
+   grid CONTAINER is itself a grid item, so it can take t-mid.) Purely
+   decorative — the order is already in the markup and in the pips. */
+.trick-grid::before {
+  content: '↺';
+  grid-area: t-mid;
+  font-size: 19px; color: var(--muted); opacity: 0.35;
+  user-select: none;
+}
+
+.played {
+  position: relative;
+  width: clamp(40px, 12vw, 50px);
+  aspect-ratio: 5 / 7;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.32);
+  background: linear-gradient(170deg, var(--card), var(--card-2));
+  color: var(--card-ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px;
+  container-type: inline-size;
+  animation: drop 0.22s ease;
+}
+.played.red { color: var(--card-red); }
+/* The card that is currently taking the trick. A ring, plus the winner's team
+   colour, so "are we winning this?" is answerable at a glance. */
+.played.winning { box-shadow: 0 0 0 2px var(--team), 0 4px 16px -6px var(--team); }
+.played .r { font-family: var(--mono); font-weight: 700; font-size: min(19px, 44cqw); line-height: 1; }
+.played .s { font-size: min(16px, 38cqw); line-height: 1; }
+/* Play order. Small, outside the card, and the reason a screenshot of a trick
+   is unambiguous about who led. */
+.played .pip {
+  position: absolute; top: -7px; right: -6px;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+@keyframes drop {
+  from { opacity: 0; transform: translateY(-9px) scale(0.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* An empty slot: dashed outline, so the shape of the trick is visible before
+   it fills and you can see how many are still to play. */
+.slot-empty {
+  width: clamp(40px, 12vw, 50px);
+  aspect-ratio: 5 / 7;
+  border-radius: 7px;
+  border: 1px dashed var(--border-soft);
+}
+.slot-empty.yours { border-color: var(--accent); opacity: 0.55; }
+
+/* --- Play: the prompt line ---------------------------------------------- */
+/* min-height is load-bearing: this is one line most of the time and two when
+   it explains a refusal, and letting it resize shifts the whole hand. */
+.prompt {
+  min-height: 34px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; line-height: 1.4; color: var(--muted);
+}
+.prompt.you { color: var(--text); }
+.prompt.error { color: var(--warn); }
+
+/* --- Play: the hand dock ------------------------------------------------ */
+/*
+   Sticky to the bottom edge so the cards and the confirm button are always in
+   reach. Narrower side padding than the rest of the shell, because at thirteen
+   cards those 20px are the difference between seven cards to a row and six.
+*/
+.hand-dock {
+  position: sticky; bottom: 0; z-index: 5;
+  margin: 0 -20px;
+  padding: 9px 10px max(9px, env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 8px;
+  background: linear-gradient(to top, var(--bg) 58%, rgba(11, 10, 15, 0.85));
+  backdrop-filter: blur(6px);
+  border-top: 1px solid var(--border-soft);
+}
+
+/*
+   THE WHOLE HAND IS ALWAYS ON SCREEN. Never scrolled, never clipped: you
+   cannot choose between cards you cannot see, and "is that all of them?" is
+   not a question the table should make you ask.
+
+   sequence solves this by shrinking seven cards to fit one row. Thirteen will
+   not go: at 360px that is 320 usable, minus twelve gaps, divided by thirteen
+   — 18.6px a card, which is a stripe rather than a card. So the rule survives
+   and the mechanism changes. Cards keep a real width and the row WRAPS, which
+   gives two rows at thirteen and collapses back to one by the seventh trick,
+   at which point this looks exactly like sequence again.
+
+   The width is picked so seven fit a row on a 360px phone:
+     7 x 42.8px + 6 x 5px gap = 330px, inside the 340px the dock leaves.
+   The 38px floor holds that for a 320px screen; the 58px cap is sequence's
+   card, so nothing is bigger here than it is there.
+
+   Not a list: every child is a button, so this is a labelled group and the
+   cards are its controls. A <ul> would force an <li> between the flex line and
+   the thing being sized, and the sizing below is the whole point.
+*/
+.hand {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  row-gap: 7px;
+  padding: 1px 0 2px;
+}
+
+.hand-card {
+  width: clamp(38px, 11.9vw, 58px);
+  aspect-ratio: 5 / 7;
+  flex: none;
+  position: relative;
+  /* So the rank can size itself against the CARD rather than the viewport.
+     padding: 0 is load-bearing for that — a button carries UA padding and cq
+     units measure the content box. */
+  container-type: inline-size;
+  padding: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  background: linear-gradient(170deg, var(--card), var(--card-2));
+  color: var(--card-ink);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.15s, border-color 0.15s;
+}
+.hand-card.red { color: var(--card-red); }
+.hand-card .r { font-family: var(--mono); font-weight: 700; font-size: min(20px, 46cqw); line-height: 1; }
+.hand-card .s { font-size: min(17px, 40cqw); line-height: 1; }
+
+/* The first card of each suit after the first gets a wider gutter. The hand
+   arrives suit-sorted from sortHand(), so this turns the row into visible
+   suit runs — which is the unit the follow-suit rule actually operates on.
+   (A run that starts a wrapped row gets a small indent instead. Harmless, and
+   cheaper than the sub-grid it would take to avoid.) */
+.hand-card.suit-start { margin-left: 13px; }
+
+/* A card you hold but may not play. Greyed stock, darker ink, inert to touch.
+   This is a CONVENIENCE, never the enforcement point — js/state.js refuses an
+   illegal card whatever the client believes. */
+.hand-card.illegal {
+  background: var(--card-off);
+  color: var(--card-ink-off);
+  border-color: rgba(0, 0, 0, 0.18);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.hand-card.illegal.red { color: var(--card-red-off); }
+
+/* Selected, not played. Court Piece is unforgiving about a mis-tap, and at
+   42px a thumb is not precise, so nothing leaves your hand until you confirm
+   it — the lift is the receipt for the tap. */
+.hand-card.selected {
+  transform: translateY(-9px);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 7px 20px -7px var(--accent);
+}
+.hand-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.confirm-row { display: flex; gap: 8px; align-items: center; }
+.confirm-row .btn { flex: 1 1 auto; min-height: 46px; }
+
+/* --- Declaring the trump ------------------------------------------------ */
+.suit-choice { display: flex; gap: 8px; }
+.suit-btn {
+  flex: 1 1 0;
+  min-height: 62px;
+  border-radius: 11px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+}
+.suit-btn .name {
+  font-family: var(--mono); font-size: 8px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted);
+}
+.suit-btn.red { color: #FF6B6B; }
+.suit-btn:hover { border-color: var(--accent); background: var(--surface-2); }
+.suit-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* --- Deal over / match over --------------------------------------------- */
+.result-banner {
+  background: var(--team-dim);
+  border: 1px solid var(--team);
+  border-radius: 18px;
+  padding: 26px 22px;
+  text-align: center;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.result-kicker {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.24em;
+  text-transform: uppercase; color: var(--muted);
+}
+.result-headline { font-family: var(--serif); font-size: clamp(27px, 8vw, 38px); font-weight: 700; margin: 0; line-height: 1.08; }
+/* A court is the whole point of the game and is allowed to shout. */
+.result-headline.court { color: var(--accent); letter-spacing: 0.02em; }
+.result-detail { font-size: 14px; color: var(--muted); line-height: 1.5; }
+
+.tally { display: flex; justify-content: center; gap: 22px; padding-top: 4px; }
+.tally-item { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.tally-num { font-family: var(--serif); font-size: 26px; font-weight: 700; line-height: 1; }
+.tally-label {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+/* The thirteen tricks of the deal just finished, as a scrubbable strip. Only
+   ever shown once the deal is over — during play you get the last trick and
+   your own memory, which is the game. */
+.trick-strip { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 8px; }
+.trick-cell {
+  flex: none; width: 46px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  border: 1px solid var(--border-soft); border-radius: 8px; padding: 6px 3px;
+}
+.trick-cell .n { font-family: var(--mono); font-size: 9px; color: var(--muted); }
+.trick-cell .w { width: 10px; height: 10px; border-radius: 50%; background: var(--team); }
+
+/* --- Last-trick reveal --------------------------------------------------- */
+.last-trick {
+  border: 1px solid var(--border-soft);
+  border-radius: 11px;
+  background: var(--surface);
+  padding: 11px;
+  display: flex; align-items: center; gap: 10px;
+}
+.last-trick .mini-row { display: flex; gap: 5px; }
+.last-trick .caption { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.mini {
+  width: 30px; aspect-ratio: 5 / 7; border-radius: 5px;
+  background: linear-gradient(170deg, var(--card), var(--card-2));
+  color: var(--card-ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 10px; font-weight: 700; line-height: 1.05;
+  container-type: inline-size;
+}
+.mini.red { color: var(--card-red); }
+.mini.won { box-shadow: 0 0 0 2px var(--team); }
+
+/* --- Log ----------------------------------------------------------------- */
+.log-section { display: flex; flex-direction: column; gap: 8px; }
+.log-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.log-line { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.log-line.latest { color: var(--text); }
+.log-line .kind {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); flex: none; min-width: 42px; padding-top: 2px;
+}
+/* Only the lines that are events get a coloured tag; the rest stay --muted so
+   the colour means something. Amber for the two rung lines, because amber is
+   this palette's "pay attention" and the rung is the fact the whole deal turns
+   on. Accent for the two that end something, because crimson is already the
+   colour of a live, decided thing everywhere else on the page.
+
+   `reveal` is only ever emitted in a Hidden Rung deal — see playCard() in
+   js/state.js — so in a classic deal this rule matches nothing, which is
+   correct rather than wasteful. */
+.log-line.trump .kind,
+.log-line.reveal .kind { color: var(--warn); }
+.log-line.court .kind,
+.log-line.match .kind { color: var(--accent); }
+
+/* --- Host controls ------------------------------------------------------- */
+.host-bar {
+  display: flex; flex-direction: column; gap: 10px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 15px;
+}
+.danger-text { color: var(--warn); }
+.waiting-note {
+  font-size: 13px; color: var(--muted); text-align: center; line-height: 1.5;
+  padding: 12px 0;
+}
+
+/* --- Footer -------------------------------------------------------------- */
+.site-foot {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 20px 26px;
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  flex-wrap: wrap;
+}
+.visitor-counter { margin: 0; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; color: var(--muted); text-transform: uppercase; }
+.visitor-count { color: var(--text); }
+.cache-reset {
+  background: none; border: none; padding: 6px 4px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+}
+.cache-reset:hover { color: var(--accent); }
+
+/* --- Utilities ----------------------------------------------------------- */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.spacer { flex: 1 1 auto; }
+
+/* Honour the setting. Everything below is reassurance rather than
+   information: the card still lands, it just stops sliding there. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

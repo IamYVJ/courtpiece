@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Court Piece">
+  <!--
+    Three cards held in a hand, the front one face-down and crimson.
+
+    WHY NOT A SUIT PIP
+      A pip would have to pick a suit, and the suit that matters in this game
+      is the trump — which changes every deal, and which Hidden Rung keeps
+      face-down for the first few tricks. Any pip here would be a claim the
+      game does not make. So the front card is a BACK: an inset border and a
+      lattice, which is what a face-down card looks like and what the called
+      rung looks like until somebody shows out.
+
+      A single large lozenge was tried in that spot and had to go — at icon
+      size it is indistinguishable from the diamond suit, which is exactly the
+      claim this is avoiding. A repeating lattice cannot be mistaken for one
+      pip, and it is what real card backs do for the same reason.
+
+    WHY NOT FOUR CARDS IN A TRICK
+      Also tried. Four rounded rectangles converging on a point read as a plus
+      sign at 512px and as lint at 48px, because nothing in the arrangement
+      says "card" — a rectangle only becomes a card once something is printed
+      on it or once it is fanned like one. This does both.
+
+    Crimson is this repo's one accent (#E2464F) and, in the app's palette, the
+    colour of your own side of the table. Cream is --card, the same cream the
+    cards in the game are drawn in.
+
+    scripts/gen-icons.js draws exactly this into a PNG buffer by hand, because
+    a manifest needs raster icons and rasterising this would otherwise mean a
+    dependency. The two must be kept in step; the numbers below are the shared
+    source of truth.
+  -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="0%" r="110%">
+      <stop offset="0" stop-color="#1C1218"/>
+      <stop offset="0.6" stop-color="#0B0A0F"/>
+    </radialGradient>
+    <!-- A square grid turned 45 degrees: the diamond lattice on the card back.
+         26 units apart, which at 48px is about a pixel and a half — fine to
+         lose to blur at that size, since the border carries the shape. -->
+    <pattern id="lattice" width="26" height="26" patternUnits="userSpaceOnUse"
+             patternTransform="rotate(45 256 268)">
+      <path d="M0 0V26M0 0H26" fill="none" stroke="#F7C3C6" stroke-opacity="0.42" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+
+  <rect width="512" height="512" fill="#0B0A0F"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+
+  <!--
+    Every card is 176x246 — the 5:7 of a real card, and of .card in the app —
+    with an 18 corner radius, each turned about its own centre.
+
+    The 13-wide stroke is the background colour, not a border. Half of it falls
+    outside the rect, and that is the only thing keeping two overlapping cards
+    from fusing into one cream blob at 48px, which is the size that decides
+    whether an icon works at all.
+  -->
+  <g stroke="#0B0A0F" stroke-width="13">
+    <rect x="134" y="139" width="176" height="246" rx="18" fill="#F2EDE3" transform="rotate(-21 222 262)"/>
+    <rect x="204" y="133" width="176" height="246" rx="18" fill="#F2EDE3" transform="rotate(17 292 256)"/>
+    <rect x="168" y="145" width="176" height="246" rx="18" fill="#E2464F" transform="rotate(-3 256 268)"/>
+  </g>
+
+  <!-- The back pattern, on the front card only and inside its rotation. -->
+  <g transform="rotate(-3 256 268)">
+    <rect x="193" y="170" width="126" height="196" rx="7" fill="url(#lattice)"/>
+    <rect x="190" y="167" width="132" height="202" rx="10"
+          fill="none" stroke="#F7C3C6" stroke-opacity="0.85" stroke-width="7"/>
+  </g>
+</svg>
