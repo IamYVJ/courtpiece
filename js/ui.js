@@ -278,6 +278,13 @@ function homeScreen(app, intents) {
       }, 'JOIN A TABLE'),
     ),
 
+    // Needs no name, unlike the two above it: a screen that only watches holds
+    // no seat, so there is nothing at the table to print a name on.
+    el('button', {
+      class: 'btn btn-ghost', type: 'button',
+      onclick: intents.goWatch,
+    }, 'WATCH A TABLE'),
+
     app.error ? el('p', { class: 'prompt error' }, app.error) : null,
     app.showHelp ? helpPanel() : null,
   );
@@ -286,10 +293,16 @@ function homeScreen(app, intents) {
 function joinScreen(app, intents) {
   const code = app.codeDraft || '';
   const ready = code.length === CODE_LENGTH;
+  // One screen for both, because both are "type the four characters". What
+  // differs is what the host is asked for once they are typed.
+  const watch = app.joinMode === 'watch';
   return shell(
     wordmark(app, intents, { help: false }),
-    el('h1', { class: 'title' }, 'Join a table'),
-    el('p', { class: 'subtitle' }, 'Four characters, from whoever is hosting.'),
+    el('h1', { class: 'title' }, watch ? 'Watch a table' : 'Join a table'),
+    el('p', { class: 'subtitle' }, watch
+      ? 'Four characters, from whoever is hosting. This screen shows the table and the score — '
+        + 'never anybody’s cards — so it can sit where all four players can see it.'
+      : 'Four characters, from whoever is hosting.'),
 
     // Worth more here than anywhere: with no PeerJS there is no join at all,
     // and the alternative is the player typing a code they read off someone
@@ -315,7 +328,7 @@ function joinScreen(app, intents) {
       el('button', {
         class: 'btn btn-primary', type: 'button', disabled: !ready,
         onclick: () => intents.join(code),
-      }, 'JOIN'),
+      }, watch ? 'WATCH' : 'JOIN'),
       el('button', { class: 'btn btn-ghost', type: 'button', onclick: intents.goHome }, '‹ BACK'),
     ),
 
@@ -358,6 +371,9 @@ function helpPanel() {
 function gameScreen(app, intents) {
   const { pub } = app;
   if (!pub) return noticeScreen(app, intents, 'Loading…', 'Waiting for the table.', null);
+
+  // A watching screen gets one layout for every phase. See watchScreen().
+  if (app.me.watching) return watchScreen(app, intents);
 
   switch (pub.phase) {
     case PHASES.LOBBY:      return withLinkNote(app, lobbyScreen(app, intents));
@@ -443,6 +459,7 @@ function lobbyScreen(app, intents) {
         ...pub.seats.map((p, seat) => seatRow(app, intents, p, seat, mySeat, myTeam, isOwner)),
       ),
       pairingNote(pub, mySeat, myTeam),
+      watchersNote(pub),
     ),
 
     isOwner ? rulesPanel(pub, intents) : rulesSummary(pub),
@@ -538,6 +555,26 @@ function pairingNote(pub, mySeat, myTeam) {
       ? `You and ${partner.name} are partners — you sit opposite each other.`
       : 'Your partner is the seat opposite yours. Nobody is in it yet.',
   );
+}
+
+/**
+ * Says that a screen is watching, and what it can see.
+ *
+ * Both halves matter. The count is how whoever set the TV up learns it worked
+ * without walking over to look at it; the second sentence is for the other
+ * three, who are entitled to know that an extra screen in the room is not
+ * showing anybody their hand.
+ *
+ * `watchers` is added to the frame by the host (hostSync() in js/main.js), not
+ * by the engine, so an older host simply does not send it and nothing is drawn.
+ */
+function watchersNote(pub) {
+  const n = Number.isInteger(pub.watchers) ? pub.watchers : 0;
+  if (n <= 0) return null;
+  return el('p', { class: 'pairing-note' },
+    el('span', { class: 'team-dot', 'aria-hidden': 'true' }),
+    `${n} screen${n === 1 ? ' is' : 's are'} watching. `
+      + `${n === 1 ? 'It shows' : 'They show'} the table and the score, never anybody’s cards.`);
 }
 
 function rulesPanel(pub, intents) {
@@ -764,15 +801,20 @@ function rungChip(app) {
   );
 }
 
-function tableGrid(app, mySeat, myTeam) {
-  const { pub } = app;
+/**
+ * `mySeat` is the seat drawn at the bottom; `selfSeat` is the seat that gets
+ * called "You". For a player they are the same seat, which is why the second
+ * defaults to the first. A watching screen needs them apart: somebody has to
+ * be at the bottom of the picture, and nobody on it is "You".
+ */
+function tableGrid(app, mySeat, myTeam, selfSeat = mySeat) {
   const at = seatPositions(mySeat);
   return el('div', { class: 'table' },
-    seatPlate(app, at.top, 'partner', mySeat, myTeam),
-    seatPlate(app, at.left, 'left', mySeat, myTeam),
-    seatPlate(app, at.right, 'right', mySeat, myTeam),
-    seatPlate(app, at.bottom, 'mine', mySeat, myTeam),
-    trickGrid(app, mySeat, myTeam),
+    seatPlate(app, at.top, 'partner', selfSeat, myTeam),
+    seatPlate(app, at.left, 'left', selfSeat, myTeam),
+    seatPlate(app, at.right, 'right', selfSeat, myTeam),
+    seatPlate(app, at.bottom, 'mine', selfSeat, myTeam),
+    trickGrid(app, mySeat, myTeam, selfSeat),
   );
 }
 
@@ -819,7 +861,7 @@ function seatPlate(app, seat, position, mySeat, myTeam) {
   );
 }
 
-function trickGrid(app, mySeat, myTeam) {
+function trickGrid(app, mySeat, myTeam, selfSeat = mySeat) {
   const { pub } = app;
   const plays = pub.trick || [];
 
@@ -839,7 +881,7 @@ function trickGrid(app, mySeat, myTeam) {
     const who = pub.seats[seat];
 
     if (idx < 0) {
-      const yours = seat === mySeat;
+      const yours = seat === selfSeat;
       return el('li', { class: `trick-slot ${position}` },
         el('div', {
           class: 'slot-empty' + (yours ? ' yours' : ''),
@@ -857,7 +899,7 @@ function trickGrid(app, mySeat, myTeam) {
       el('div', {
         class: ['played', isRedCard(code) ? 'red' : '', winning ? 'winning' : ''].filter(Boolean).join(' '),
         style: teamStyle(teamOf(seat), myTeam),
-        'aria-label': `${seat === mySeat ? 'You' : (who ? who.name : 'Seat')} played `
+        'aria-label': `${seat === selfSeat ? 'You' : (who ? who.name : 'Seat')} played `
           + `${cardName(code)}${winning ? (settled ? ', takes the trick' : ', currently winning') : ''}`,
       },
         ...face(code),
@@ -1130,12 +1172,12 @@ function tallyItem(num, label) {
 /** Every trick of the deal just finished, as a scrubbable strip. Only ever
  *  shown once the deal is over — during play you get the last trick and your
  *  own memory, which is most of the game. */
-function trickStrip(pub, myTeam) {
+function trickStrip(pub, myTeam, side = (team) => (team === myTeam ? 'us' : 'them')) {
   return el('div', { class: 'trick-strip', 'data-keep-scroll': 'tricks' },
     ...pub.tricks.map((t, i) => el('div', {
       class: 'trick-cell',
       style: teamStyle(t.winnerTeam, myTeam),
-      'aria-label': `Trick ${i + 1} to ${t.winnerTeam === myTeam ? 'us' : 'them'}`,
+      'aria-label': `Trick ${i + 1} to ${side(t.winnerTeam)}`,
     },
       el('span', { class: 'n' }, String(i + 1)),
       el('span', { class: 'w' }),
@@ -1215,9 +1257,217 @@ function matchDetail(pub, myTeam) {
     : `${win} deals to ${lose} over ${pub.dealsPlayed}.`;
 }
 
+// ---------------------------------------------------------------------------
+// Watching — a TV in the room, or a fifth person on the sofa
+//
+// A device that dialled in with WATCH instead of JOIN. It holds no seat, so it
+// is sent no private state at all (see stateFrameFor() in js/net.js) and
+// everything below is drawn from `pub` alone: the cards on the table, how many
+// each player still holds, the score, the rung once it is face up. That is
+// exactly what somebody standing behind the table can see, which is what makes
+// it safe to put on a screen all four players are looking at.
+//
+// ONE LAYOUT FOR EVERY PHASE, unlike a player's device. A phone swaps whole
+// screens between the lobby, the table and the result because each one needs
+// the whole phone. A TV is a scoreboard that stays up for the evening: the
+// room code, the two teams and the log keep their places, and only the stage
+// in the middle changes. Somebody glancing up from their hand should find the
+// score where it was the last time they looked.
+//
+// NOBODY IS "YOU" AND NO SIDE IS "US". Seat 0 is drawn at the bottom because
+// somebody has to be, team 0 takes the crimson because one of them has to, and
+// every word that a player's device would write as "You", "We" or "They" is a
+// name here. The rule for which words those are is teamLabel(), below.
+// ---------------------------------------------------------------------------
+
+/** The seat a watching screen draws at the bottom of the table. */
+const WATCH_SEAT = 0;
+/** The team it paints in --us. Nothing more than "the first one". */
+const WATCH_TEAM = 0;
+/** The seat it calls "You": none. Every seat index is >= 0, so nothing matches. */
+const WATCH_SELF = -1;
+
+/**
+ * A team, named by the people on it: "Asha & Ravi".
+ *
+ * "Team 1" is what the engine would say, and it means nothing to a room —
+ * nobody at a card table knows which team is the first one. The two names are
+ * unambiguous, they are already on the seat plates, and "{team} win the deal"
+ * reads correctly with a pair in it because the log's verbs are plural on
+ * purpose (see _endDeal() in js/state.js).
+ *
+ * Exported, and pure, so the harness can pin it without a DOM.
+ */
+export function teamLabel(pub, team) {
+  if (team === null || team === undefined) return 'Nobody';
+  const names = pub.seats
+    .filter((p, seat) => p && teamOf(seat) === team)
+    .map((p) => p.name);
+  return names.length ? names.join(' & ') : `Team ${team + 1}`;
+}
+
+function watchScreen(app, intents) {
+  const { pub } = app;
+  const side = (team) => teamLabel(pub, team);
+
+  let stage;
+  switch (pub.phase) {
+    case PHASES.LOBBY:      stage = watchLobby(app, intents); break;
+    case PHASES.DEAL_OVER:  stage = watchDealOver(pub, side); break;
+    case PHASES.MATCH_OVER: stage = watchMatchOver(pub, side); break;
+    default:                stage = watchTable(app);
+  }
+
+  return el('div', { class: 'shell tv' },
+    watchHead(app, intents),
+    el('div', { class: 'tv-body' },
+      el('div', { class: 'tv-stage' }, stage),
+      el('aside', { class: 'tv-side' },
+        watchScores(pub),
+        pub.lastTrick ? lastTrickPanel(pub, WATCH_SELF, WATCH_TEAM) : null,
+        logSection(pub, 6, WATCH_TEAM, side),
+      ),
+    ),
+  );
+}
+
+/**
+ * The room code stays up for the whole match, not just the lobby. On a phone it
+ * would be wasted space once play starts; on the one screen everybody can see
+ * it is how a player who dropped finds the code to get back in.
+ */
+function watchHead(app, intents) {
+  const { pub } = app;
+  const down = !!app.reconnecting;
+  return el('header', { class: 'tv-head' },
+    wordmark(app, intents, { help: false }),
+    el('span', {
+      class: 'tv-code',
+      'aria-label': `Room code ${(app.code || '').split('').join(' ')}`,
+    }, app.code || '----'),
+    el('span', { class: 'section-label' }, matchContext(pub)),
+    el('div', { class: 'tv-head-right' },
+      rungChip(app),
+      el('span', { class: 'turn-state' + (down ? ' stale' : '') },
+        down ? 'Reconnecting…' : 'Watching'),
+      // The only control on the screen. A TV has nobody to press it, which is
+      // fine — it is for the laptop driving the TV, at the end of the night.
+      el('button', { class: 'btn btn-ghost tv-leave', type: 'button', onclick: intents.goHome },
+        '✕ LEAVE'),
+    ),
+  );
+}
+
+/**
+ * Both teams, always on screen: who they are, the tricks in this deal, and the
+ * match standing underneath. A player's device splits those across two bars
+ * and shows only one number per side at a time, because that is all a phone
+ * has room for. Here there is room, and a spectator who walked in halfway has
+ * no other way to learn any of it.
+ */
+function watchScores(pub) {
+  const tricks = pub.tricksWon || [0, 0];
+  // Before the first deal there are no tricks to count, and a pair of zeros
+  // out of seven would be a score for a game that has not started.
+  const dealing = pub.phase !== PHASES.LOBBY;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+  const card = (team) => el('div', {
+    class: 'tv-team', style: teamStyle(team, WATCH_TEAM),
+    'aria-label': `${teamLabel(pub, team)}: `
+      + (dealing ? `${tricks[team]} of ${TRICKS_TO_WIN} tricks, ` : '')
+      + `${plural(pub.courts[team], 'court')}, ${plural(pub.dealsWon[team], 'deal')}`,
+  },
+    el('div', { class: 'tv-team-text', 'aria-hidden': 'true' },
+      el('span', { class: 'tv-team-name' }, teamLabel(pub, team)),
+      el('span', { class: 'tv-team-match' },
+        `${plural(pub.courts[team], 'court')} · ${plural(pub.dealsWon[team], 'deal')}`),
+    ),
+    dealing ? el('div', { class: 'tv-team-tricks', 'aria-hidden': 'true' },
+      el('span', { class: 'num' }, String(tricks[team])),
+      el('span', { class: 'of' }, `/${TRICKS_TO_WIN}`),
+    ) : null,
+  );
+
+  return el('div', { class: 'tv-scores' }, card(0), card(1));
+}
+
+/** DEAL_FIVE, DECLARE_TRUMP, DEAL_REST and PLAY — the same four-in-one as a
+ *  player's table screen, without the hand dock, because there is no hand. */
+function watchTable(app) {
+  const { pub } = app;
+  return el('div', { class: 'tv-table' },
+    tableGrid(app, WATCH_SEAT, WATCH_TEAM, WATCH_SELF),
+    // promptLine() with no private state is already the spectator's caption:
+    // every branch that says "you" is behind a check on `priv`. It is handed
+    // the public state and nothing else, so a refusal or a dropped link meant
+    // for a player cannot be read out to the room.
+    app.reconnecting
+      ? el('p', { class: 'prompt error' }, 'Connection lost — dialling back in.')
+      : promptLine({ pub, error: null, reconnecting: false }, null),
+  );
+}
+
+/** Before the match: the code at a size the far end of the sofa can read, and
+ *  who has sat down so far. This is the screen the table gathers round. */
+function watchLobby(app, intents) {
+  const { pub } = app;
+  const seated = pub.seats.filter(Boolean).length;
+  return el('div', { class: 'tv-lobby' },
+    el('p', { class: 'section-label' }, 'Join this table'),
+    el('p', { class: 'tv-bigcode', 'aria-hidden': 'true' }, app.code || '----'),
+    el('p', { class: 'subtitle' },
+      'On your phone, open this site, tap JOIN A TABLE and enter the code.'),
+    el('ul', { class: 'seat-list' },
+      ...pub.seats.map((p, seat) => seatRow(app, intents, p, seat, WATCH_SELF, WATCH_TEAM, false)),
+    ),
+    rulesSummary(pub),
+    el('p', { class: 'waiting-note' },
+      seated < SEAT_COUNT
+        ? 'Waiting for players. Empty seats are filled by bots when the host starts.'
+        : 'Waiting for the host to start.'),
+  );
+}
+
+function watchDealOver(pub, side) {
+  const r = pub.dealResult;
+  const courted = r.court !== null;
+  return el('div', { class: 'tv-result' },
+    el('div', { class: 'result-banner', style: teamStyle(r.winnerTeam, WATCH_TEAM) },
+      el('span', { class: 'result-kicker' }, courted ? 'Court' : 'Deal over'),
+      el('h1', { class: 'result-headline' + (courted ? ' court' : '') },
+        courted ? `${side(r.court)} score a court` : `${side(r.winnerTeam)} win the deal`),
+      el('p', { class: 'result-detail' }, dealDetail(pub, r, WATCH_TEAM)),
+    ),
+    el('p', { class: 'section-label' }, 'Trick by trick'),
+    trickStrip(pub, WATCH_TEAM, side),
+    el('p', { class: 'rule-hint' }, successionNote(pub, r, WATCH_SELF)),
+    el('p', { class: 'waiting-note' },
+      pub.matchOver ? 'Waiting for the host…' : 'Waiting for the host to deal again.'),
+  );
+}
+
+function watchMatchOver(pub, side) {
+  const drawn = pub.matchDrawn;
+  return el('div', { class: 'tv-result' },
+    el('div', {
+      class: 'result-banner',
+      style: teamStyle(drawn ? WATCH_TEAM : pub.matchWinner, WATCH_TEAM),
+    },
+      el('span', { class: 'result-kicker' }, 'Match over'),
+      el('h1', { class: 'result-headline' },
+        drawn ? 'Drawn' : `${side(pub.matchWinner)} take the match`),
+      el('p', { class: 'result-detail' }, matchDetail(pub, WATCH_TEAM)),
+    ),
+    el('p', { class: 'waiting-note' }, 'Waiting for the host.'),
+  );
+}
+
 // --- Log -------------------------------------------------------------------
 
-function logSection(pub, limit, myTeam) {
+/** `side` names a team for whoever is reading. A seated device says "We" and
+ *  "They"; a watching screen has no "we" and names the two players instead. */
+function logSection(pub, limit, myTeam, side = (team) => sideWord(team, myTeam)) {
   const lines = pub.log.slice(-limit);
   if (!lines.length) return null;
   return el('section', { class: 'log-section' },
@@ -1229,7 +1479,7 @@ function logSection(pub, limit, myTeam) {
         class: ['log-line', i === 0 ? 'latest' : '', line.kind].filter(Boolean).join(' '),
       },
         el('span', { class: 'kind' }, line.kind === 'info' ? '' : line.kind),
-        el('span', {}, logText(line, myTeam)),
+        el('span', {}, logText(line, side)),
       )),
     ),
   );
@@ -1271,17 +1521,22 @@ function speak(app) {
   // the screen says "They win the deal" is two different accounts of the same
   // moment, and only one of them answers the question being asked.
   const myTeam = priv && priv.seat >= 0 ? teamOf(priv.seat) : null;
+  // A watching screen has no side of its own, so it names the pair — the same
+  // words its own banner is showing.
+  const side = app.me && app.me.watching
+    ? (team) => teamLabel(pub, team)
+    : (team) => sideWord(team, myTeam);
 
   if (pub.phase === PHASES.MATCH_OVER) {
     announce(pub.matchDrawn ? 'The match is drawn.'
-      : `${sideWord(pub.matchWinner, myTeam)} win the match.`);
+      : `${side(pub.matchWinner)} win the match.`);
     return;
   }
   if (pub.phase === PHASES.DEAL_OVER && pub.dealResult) {
     const r = pub.dealResult;
     announce(r.court !== null
-      ? `Court. ${sideWord(r.court, myTeam)} took the opening seven tricks.`
-      : `${sideWord(r.winnerTeam, myTeam)} win the deal, ${r.tricksWon[r.winnerTeam]} tricks to `
+      ? `Court. ${side(r.court)} took the opening seven tricks.`
+      : `${side(r.winnerTeam)} win the deal, ${r.tricksWon[r.winnerTeam]} tricks to `
         + `${r.tricksWon[1 - r.winnerTeam]}.`);
     return;
   }
@@ -1349,9 +1604,9 @@ function sideWord(team, myTeam) {
 
 /** Fill the `{team}` token the engine leaves in log lines. See _say() in
  *  js/state.js for why the log ships the token rather than a team name. */
-function logText(line, myTeam) {
+function logText(line, side) {
   if (!line.text.includes('{team}')) return line.text;
-  return line.text.replace('{team}', sideWord(line.team, myTeam));
+  return line.text.replace('{team}', side(line.team));
 }
 
 function ordinal(seat) {

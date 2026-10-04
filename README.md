@@ -216,6 +216,29 @@ their table on screen behind a banner and retry for a little over half a minute
 rather than being told the game is over. A seat is reclaimed by the rejoining
 device's secret `clientId`, never by the name printed above it.
 
+## Watching on a TV
+
+A fifth screen — a TV, a laptop on the sideboard, somebody on the sofa — can
+show the table without sitting at it. On that device open the site, tap
+**WATCH A TABLE**, type the room code and tap **WATCH**. No name is needed, and
+it can join before the match or halfway through a deal.
+
+It shows the table from above: the four seats, the cards as they are played,
+both teams' tricks and match standing, the last trick, the log, and the room
+code so a player who dropped can find their way back in. On a wide screen it
+fills the display and scales with it; on a phone it is one column.
+
+**It never shows anybody's cards**, and under Hidden Rung it does not show the
+trump until the table has seen it. A watching screen is sent the public table
+and nothing else — the same frame a player gets, with the private half left
+out — so it is safe to put where all four players are looking. It also cannot
+play a card or press a host control: it holds no seat, and the engine refuses
+anything that does not come from one.
+
+The lobby tells the players when a screen is watching. Up to four can watch a
+table. A watching screen keeps the display awake where the browser allows it,
+and picks the table back up by itself after a reload.
+
 ## Project layout
 
 ```
@@ -314,8 +337,10 @@ forgotten:
 - **Double Sir** and **Be-Ranga Double Sar** — the variants where a player who
   sweeps consecutive tricks claims them back.
 - **Hotseat.** See the top of this file.
-- **Turn timers**, spectators, match history across sessions, and a server
-  backend.
+- **Turn timers**, match history across sessions, and a server backend.
+- **A watching screen that shows the hands.** The TV view shows what the table
+  can see and no more; a broadcast view with all four hands face up would have
+  to be kept out of the players' sight, and there is no way to enforce that.
 
 ---
 

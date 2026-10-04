@@ -10,9 +10,13 @@
 //   public state plus only that device's own hand.
 //
 //   Three clients, one host, and that is the whole topology. Court Piece is four
-//   players and no spectators, so there is nothing here about rooms, lobbies or
-//   a player list — see WHAT IS DELIBERATELY NOT HERE at the bottom of this
-//   header.
+//   players, so there is nothing here about rooms, lobbies or a player list —
+//   see WHAT IS DELIBERATELY NOT HERE at the bottom of this header.
+//
+//   A watching screen (a TV) is not a fifth kind of thing. It is one more
+//   connection to the host that never asks for a seat, and this file already
+//   sends such a connection the public table with a null private half — see
+//   stateFrameFor(). Who counts as watching is js/main.js's business.
 //
 // ----------------------------------------------------------------------------
 // SIGNALING, AND WHY A CACHED PWA STILL NEEDS THE INTERNET.
@@ -98,7 +102,9 @@ export const BROKER_CONFIG = null;
 // budget is for churn that is normal rather than hostile: a reconnecting
 // player's new connection overlaps their dead one until PeerJS notices, and the
 // client's retry ladder can have two attempts in flight across a slow blip. Three
-// players at up to four connections each, and a little headroom.
+// players at up to four connections each, and a little headroom — which is also
+// where watching screens live. js/main.js admits at most four of those, so even
+// a full set of them leaves the players' twelve untouched.
 //
 // This is NOT an anti-abuse control and should not be mistaken for one — anyone
 // who has the code can open connections, and a lower number only makes it

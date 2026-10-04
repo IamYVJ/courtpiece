@@ -97,10 +97,35 @@ let net = null;
  *  and those deserve completely different screens. */
 let hostReady = false;
 
+/**
+ * Screens that are watching rather than playing — a TV, a laptop on the
+ * sideboard — by player id. HOST-SIDE ONLY, and deliberately not in the engine:
+ * a watcher has no seat, takes no turn and cannot change the game, so the game
+ * has nothing to know about it. It is a fact about who is connected, which is
+ * this file's business.
+ *
+ * WHAT A WATCHER IS SENT is not decided here. Every connection gets the public
+ * table plus privateStateFor(its own id), and for an id with no seat that is
+ * null — see stateFrameFor() in js/net.js. So a watcher sees exactly what
+ * somebody standing behind the table would: no hands, and no trump while the
+ * rung is hidden. This set only counts them, so the lobby can say they are
+ * there.
+ */
+const watchers = new Set();
+
+// Bounded because every one of them is another device the host's phone pushes
+// each state change to, and another connection slot a reconnecting PLAYER might
+// need (see MAX_HOST_CONNS in js/net.js). A table has one TV. Four is generous.
+const MAX_WATCHERS = 4;
+
 const app = {
   screen: 'home',           // home | join | connecting | error | hostleft | game
-  me: { id: null, name: '', isHost: false },
+  // `watching` is "this device holds no seat and is not asking for one". Like
+  // isHost it is a fact about this device, not about the game.
+  me: { id: null, name: '', isHost: false, watching: false },
   code: '',
+  // What the code-entry screen is for: 'join' takes a seat, 'watch' does not.
+  joinMode: 'join',
 
   pub: null,                // publicState() — what every device may see
   priv: null,               // privateStateFor(me.id) — this device's own cards
@@ -185,7 +210,10 @@ function syncHostTick() {
  */
 function hostSync() {
   if (!engine) { draw(); return; }
-  app.pub = engine.publicState();
+  // The watcher count rides along on the public state rather than living in the
+  // engine. It is the one thing in the frame the engine does not know, and
+  // everyone at the table is entitled to it: being watched is not a secret.
+  app.pub = { ...engine.publicState(), watchers: watchers.size };
   app.priv = engine.privateStateFor(app.me.id);
   // The host's own device holds the only copy of the hands and the hidden
   // trump that exists. Written to localStorage, never to the wire.
@@ -294,6 +322,8 @@ function draw() {
   }
   if (sameView) { if (pageY) window.scrollTo(0, pageY); }
   else window.scrollTo(0, 0);
+
+  syncWakeLock();
 }
 
 /** CSS.escape with a fallback, because the focus keys include card codes and a
@@ -404,6 +434,28 @@ function dispatchIntent(playerId, msg) {
     // firing a disconnect later against the seat we just handed back — which
     // would mark the returning player offline moments after they returned.
     if (r.reconnected && r.prevId && r.prevId !== playerId) net.dropConnection(r.prevId);
+    // A screen that was watching and has now sat down is a player.
+    watchers.delete(playerId);
+    if (net) net.sendTo(playerId, { type: 'welcome', playerId });
+    hostSync();
+    return;
+  }
+
+  // A screen that wants to watch rather than play. Like `join` this is about
+  // the connection, not the game, so it never reaches the shared dispatcher —
+  // and unlike `join` it never reaches the engine either. Nothing is granted
+  // here that the connection did not already have: an unseated connection is
+  // sent the public table and a null private half whether it asks or not. What
+  // asking buys is being counted, and being sent the table now rather than
+  // whenever somebody next plays a card.
+  if (msg.type === 'watch') {
+    if (engine.seatOf(playerId) < 0) {
+      if (!watchers.has(playerId) && watchers.size >= MAX_WATCHERS) {
+        if (net) net.sendTo(playerId, { type: 'rejected', message: 'Too many screens are already watching this table.' });
+        return;
+      }
+      watchers.add(playerId);
+    }
     if (net) net.sendTo(playerId, { type: 'welcome', playerId });
     hostSync();
     return;
@@ -448,6 +500,16 @@ const intents = {
 
   goJoin() {
     app.screen = 'join';
+    app.joinMode = 'join';
+    app.error = null;
+    draw();
+  },
+
+  /** The same code-entry screen, for a device that wants the table and no
+   *  seat. No name needed: a watcher is never shown to anybody by name. */
+  goWatch() {
+    app.screen = 'join';
+    app.joinMode = 'watch';
     app.error = null;
     draw();
   },
@@ -459,7 +521,7 @@ const intents = {
   },
 
   join(code) {
-    startJoining(code, app.nameDraft.trim());
+    startJoining(code, app.nameDraft.trim(), { watch: app.joinMode === 'watch' });
   },
 
   cancelJoin() { intents.goHome(); },
@@ -542,6 +604,7 @@ function hostHandlers() {
     onData: (playerId, msg) => handleIntent(playerId, msg),
 
     onDisconnect: (playerId) => {
+      watchers.delete(playerId);
       if (!engine) return;
       // The seat is KEPT mid-deal — it is theirs to reclaim, and emptying it
       // would end the deal for the other three. A bot covers the turns in the
@@ -659,10 +722,19 @@ function clearJoinTimer() {
   if (joinTimer) { clearTimeout(joinTimer); joinTimer = null; }
 }
 
-function startJoining(rawCode, rawName, { reconnect = false } = {}) {
+/**
+ * Dial a table — to sit at it, or with `watch` to look at it.
+ *
+ * Watching is the same connection, the same deadline and the same reconnect
+ * ladder as playing, which is why it is a flag here and not a second function:
+ * the only differences are the first message sent and that there is no name,
+ * because there is no seat to print one above.
+ */
+function startJoining(rawCode, rawName, { reconnect = false, watch = false } = {}) {
   const name = (rawName || '').trim();
   const code = normalizeCode(rawCode);
-  if (!name) { app.screen = 'home'; app.error = 'Enter a name first.'; draw(); return; }
+  app.joinMode = watch ? 'watch' : 'join';
+  if (!name && !watch) { app.screen = 'home'; app.error = 'Enter a name first.'; draw(); return; }
   if (code.length !== CODE_LENGTH) {
     app.screen = 'join';
     app.error = `Enter the full ${CODE_LENGTH}-character code.`;
@@ -673,11 +745,12 @@ function startJoining(rawCode, rawName, { reconnect = false } = {}) {
   teardownNet();
   if (!reconnect) clearReconnect();
 
-  app.me = { id: null, name, isHost: false };
+  app.me = { id: null, name, isHost: false, watching: watch };
   app.code = code;
   app.error = null;
   app.netWarning = '';
-  saveName(name);
+  // A watcher typed no name, and must not blank the one this device plays under.
+  if (!watch) saveName(name);
   saveCode(code);
 
   // On a retry, keep the table on screen behind the reconnecting banner.
@@ -686,7 +759,9 @@ function startJoining(rawCode, rawName, { reconnect = false } = {}) {
   if (!reconnect || !app.pub) { app.screen = 'connecting'; app.pub = null; app.priv = null; }
   draw();
 
-  saveSession({ role: 'join', code, name });
+  // A watching screen resumes too, and it matters more there than anywhere: a
+  // TV that reloads has nobody holding it to type the code in again.
+  saveSession({ role: watch ? 'watch' : 'join', code, name });
 
   // The deadline guards the FIRST join only. A reconnect has its own bounded
   // ladder and keeps the table visible, so there is nothing to rescue from.
@@ -703,7 +778,10 @@ function startJoining(rawCode, rawName, { reconnect = false } = {}) {
     // The clientId is what gets THIS DEVICE — and only this device — its seat
     // and its hand back mid-deal. It goes no further than the machine running
     // the game; see the note on it in js/util.js.
-    onOpen: () => net.send({ type: 'join', name, clientId: clientId() }),
+    //
+    // A watcher sends neither a name nor the clientId. It has no seat to
+    // reclaim, and a credential that is not needed is not sent.
+    onOpen: () => net.send(watch ? { type: 'watch' } : { type: 'join', name, clientId: clientId() }),
 
     onData: (msg) => handleHostMessage(msg),
 
@@ -848,7 +926,7 @@ function scheduleReconnect() {
   draw();
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    startJoining(app.code, app.me.name, { reconnect: true });
+    startJoining(app.code, app.me.name, { reconnect: true, watch: !!app.me.watching });
   }, delay);
 }
 
@@ -872,6 +950,8 @@ function teardownNet() {
   bots.reset();
   try { if (net) net.destroy(); } catch (_) {}
   net = null;
+  // Every connection they were counted on has just gone.
+  watchers.clear();
   hostReady = false;
   app.netWarning = '';
 }
@@ -889,11 +969,49 @@ function leaveGame() {
   engine = null;
   app.pub = null;
   app.priv = null;
-  app.me = { id: null, name: app.me.name, isHost: false };
+  app.me = { id: null, name: app.me.name, isHost: false, watching: false };
   app.ui.selectedCard = null;
   app.ui.lastTrickOpen = false;
   app.ui.swapFrom = null;
   clearSession();
+}
+
+// ---------------------------------------------------------------------------
+// Keeping a watching screen awake
+//
+// A player's phone stays awake because somebody is touching it. A TV showing
+// the table is touched by nobody for an hour, so without this the laptop
+// driving it dims after two minutes and sleeps after ten — and a sleeping tab
+// drops its connection, which is the whole feature gone.
+//
+// Only for a watcher, only on the game screen. The browser releases the lock
+// by itself whenever the tab is hidden, so it is asked for again on the way
+// back; see the visibilitychange handler in boot(). Where the API is missing
+// or the request is refused (low battery, an old browser) nothing happens and
+// nothing is said: the screen behaves the way it always did.
+// ---------------------------------------------------------------------------
+let wakeLock = null;
+let wakeLockPending = false;
+
+function syncWakeLock() {
+  const wanted = !!app.me.watching && app.screen === 'game'
+    && document.visibilityState === 'visible';
+
+  if (!wanted) {
+    if (wakeLock) { const lock = wakeLock; wakeLock = null; lock.release().catch(() => {}); }
+    return;
+  }
+  if (wakeLock || wakeLockPending) return;
+  if (!navigator.wakeLock || typeof navigator.wakeLock.request !== 'function') return;
+
+  wakeLockPending = true;
+  navigator.wakeLock.request('screen').then((lock) => {
+    wakeLockPending = false;
+    wakeLock = lock;
+    lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+    // The reason for it may have gone while the request was in flight.
+    syncWakeLock();
+  }).catch(() => { wakeLockPending = false; });
 }
 
 // ---------------------------------------------------------------------------
@@ -924,6 +1042,11 @@ function resumeSession() {
     return true;
   }
 
+  if (session.role === 'watch') {
+    startJoining(session.code, '', { watch: true });
+    return true;
+  }
+
   return false;
 }
 
@@ -951,6 +1074,8 @@ function boot() {
   // connection that is quietly dead is checked for by hand.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
+
+    syncWakeLock();
 
     if (engine && app.me.isHost) {
       const now = Date.now();

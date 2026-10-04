@@ -835,6 +835,272 @@ body {
   padding: 12px 0;
 }
 
+/* --- Watching: the TV ---------------------------------------------------- */
+/*
+   A screen with no seat: the table, the score and the log, and nobody's hand.
+   See watchScreen() in js/ui.js for what is on it and why.
+
+   TWO LAYOUTS, AND THE NARROW ONE COMES FIRST. A fifth person watching on a
+   phone gets the same single column as everybody else in this stylesheet, with
+   every reused component at the size it already is. Everything that makes this
+   a TV is inside the min-width block further down.
+
+   The header wraps rather than truncates. The room code is the one thing on
+   this screen somebody may need to read from across a room, and an ellipsis on
+   it would be the whole feature failing quietly.
+*/
+.shell.tv { max-width: 760px; }
+
+.tv-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tv-code {
+  font-family: var(--mono); font-size: 14px; font-weight: 700;
+  /* Letter-spacing trails the last character, so the right padding is short
+     by the same amount to keep the code centred in its box. */
+  letter-spacing: 0.3em; padding: 5px 5px 5px 10px;
+  border: 1px solid var(--border-soft); border-radius: 8px;
+  color: var(--text);
+}
+.tv-head-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+/* Both of these push themselves right in the bars they were written for. Here
+   the group they are in already has, and two auto margins would split the gap. */
+.tv-head-right .rung-chip,
+.tv-head-right .turn-state { margin-left: 0; }
+.tv-leave { min-height: 34px; padding: 0 12px; font-size: 11px; }
+
+.tv-body { display: flex; flex-direction: column; gap: 18px; }
+.tv-stage { min-width: 0; }
+.tv-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+.tv-table { display: flex; flex-direction: column; gap: 10px; }
+/* A <p> brings a font-size of margin with it, and here the font is large. On a
+   screen that must not scroll, the gaps are the ones written down. */
+.tv-table .prompt, .tv-lobby p, .tv-result p { margin: 0; }
+.tv-table .prompt { justify-content: center; text-align: center; }
+/* Which side a seat is on. A player's own device does not need this — there
+   the partner is simply the one opposite — but a spectator has no "opposite",
+   and the plate is the only place a seat's team can be read off the table. */
+.tv .seat { border-bottom: 2px solid var(--team); }
+
+.tv-scores { display: flex; flex-direction: column; gap: 8px; }
+.tv-team {
+  display: flex; align-items: center; gap: 12px;
+  border: 1px solid var(--team); background: var(--team-dim);
+  border-radius: 12px; padding: 11px 14px;
+}
+.tv-team-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+/* Allowed to wrap. Two sixteen-character names and an ampersand do not fit one
+   line at any size worth reading, and half a name is worse than two lines. */
+.tv-team-name { font-size: 15px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.tv-team-match {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.tv-team-tricks { flex: none; display: flex; align-items: baseline; gap: 3px; }
+.tv-team-tricks .num { font-family: var(--serif); font-size: 34px; font-weight: 700; line-height: 1; }
+.tv-team-tricks .of { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+.tv-lobby { display: flex; flex-direction: column; gap: 14px; }
+.tv-bigcode {
+  margin: 0; text-align: center;
+  font-family: var(--mono); font-weight: 700; line-height: 1.1;
+  font-size: clamp(44px, 17vw, 84px);
+  /* Same trailing-space correction as .tv-code, at this size. */
+  letter-spacing: 0.3em; padding-left: 0.3em;
+  color: var(--text);
+}
+.tv-lobby .subtitle { text-align: center; }
+
+.tv-result { display: flex; flex-direction: column; gap: 14px; }
+
+/*
+   THE TV ITSELF. Two columns, filling the screen, and everything scaled.
+
+   --u IS THE UNIT, and every length in this block is a multiple of it. It is
+   one pixel on a 1000-wide window and grows with the screen, so the layout
+   below is drawn once on a 1000 x 590 canvas and is the same picture on a
+   laptop, a 1080p television and a 4K one. The smaller of the two viewport
+   axes sets it, so a short wide window scales to its height and nothing falls
+   off the bottom — a TV has no scrollbar and nobody to use one.
+
+   Sized against the canvas rather than with rem because the whole stylesheet
+   is in px, on purpose, for phones: changing the root size would move every
+   other screen in the app, and this is the only one that wants to grow.
+
+   900px is where a window stops being a phone or a narrow tablet and has room
+   for the log beside the table instead of under it.
+*/
+@media (min-width: 900px) {
+  .shell.tv {
+    --u: clamp(1px, min(0.1vw, 0.17vh), 4px);
+    max-width: none;
+    min-height: 100dvh;
+    padding: calc(18 * var(--u)) calc(28 * var(--u));
+    gap: calc(16 * var(--u));
+  }
+
+  .tv-head { gap: calc(18 * var(--u)); flex-wrap: nowrap; }
+  .tv .wordmark { font-size: calc(13 * var(--u)); gap: calc(10 * var(--u)); }
+  .tv .wordmark-dot { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }
+  .tv .section-label { font-size: calc(12 * var(--u)); }
+  .tv-code {
+    font-size: calc(18 * var(--u));
+    padding: calc(5 * var(--u)) calc(6 * var(--u)) calc(5 * var(--u)) calc(11 * var(--u));
+    border-radius: calc(8 * var(--u));
+  }
+  .tv-head-right { gap: calc(16 * var(--u)); }
+  .tv .turn-state { font-size: calc(12 * var(--u)); }
+  .tv .turn-state.stale::before {
+    width: calc(8 * var(--u)); height: calc(8 * var(--u)); margin-right: calc(8 * var(--u));
+  }
+  .tv .rung-chip {
+    font-size: calc(13 * var(--u)); gap: calc(8 * var(--u));
+    padding: calc(6 * var(--u)) calc(13 * var(--u)); border-radius: calc(10 * var(--u));
+  }
+  /* The most-consulted fact in the deal, and on this screen the one a player
+     glances up for. It gets to be big. */
+  .tv .rung-chip .glyph { font-size: calc(28 * var(--u)); }
+  .tv-leave {
+    min-height: calc(32 * var(--u)); padding: 0 calc(12 * var(--u));
+    font-size: calc(11 * var(--u)); border-radius: calc(9 * var(--u));
+  }
+
+  .tv-body {
+    flex: 1 1 auto; min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(310 * var(--u));
+    gap: calc(28 * var(--u));
+    align-items: center;
+  }
+  .tv-side { gap: calc(14 * var(--u)); }
+
+  /* --- the table --- */
+  .tv-table { gap: calc(12 * var(--u)); }
+  .tv .table {
+    /* Side plates take what the trick leaves, and sit against it rather than
+       against the edges of the screen: the eye should not have to travel from
+       a card to find out whose it was. */
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: calc(12 * var(--u)) calc(22 * var(--u));
+    padding: 0;
+  }
+  .tv .seat.left  { justify-self: end; }
+  .tv .seat.right { justify-self: start; }
+  .tv .seat {
+    gap: calc(10 * var(--u)); padding: calc(9 * var(--u)) calc(16 * var(--u));
+    border-radius: calc(12 * var(--u));
+    border-bottom-width: calc(3 * var(--u));
+  }
+  .tv .seat.left, .tv .seat.right {
+    gap: calc(6 * var(--u)); padding: calc(12 * var(--u)) calc(16 * var(--u));
+  }
+  .tv .seat-who,
+  .tv .seat.left .seat-who,
+  .tv .seat.right .seat-who { font-size: calc(21 * var(--u)); font-weight: 600; }
+  .tv .seat-meta { font-size: calc(13 * var(--u)); gap: calc(6 * var(--u)); }
+  .tv .status-dot { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }
+  .tv .bot-tag {
+    font-size: calc(10 * var(--u));
+    padding: calc(2 * var(--u)) calc(5 * var(--u)); border-radius: calc(5 * var(--u));
+  }
+
+  .tv .trick-grid {
+    width: auto; min-height: 0;
+    grid-template-columns: repeat(3, auto);
+    gap: calc(7 * var(--u)) calc(14 * var(--u));
+  }
+  .tv .trick-grid::before { font-size: calc(30 * var(--u)); }
+  /* 72 wide is 101 tall, and three rows of that plus the two plates and the
+     caption is what fits the 590-high canvas with the header on it. */
+  .tv .played, .tv .slot-empty { width: calc(72 * var(--u)); border-radius: calc(10 * var(--u)); }
+  .tv .played { gap: calc(2 * var(--u)); }
+  /* Against the card, as on a phone, but without the px ceiling that keeps a
+     phone's rank at 19px — the card is the thing that grew. */
+  .tv .played .r { font-size: 42cqw; }
+  .tv .played .s { font-size: 36cqw; }
+  .tv .played.winning {
+    box-shadow: 0 0 0 calc(3 * var(--u)) var(--team),
+                0 calc(6 * var(--u)) calc(26 * var(--u)) calc(-8 * var(--u)) var(--team);
+  }
+  .tv .played .pip {
+    top: calc(-8 * var(--u)); right: calc(-8 * var(--u));
+    width: calc(21 * var(--u)); height: calc(21 * var(--u));
+    font-size: calc(12 * var(--u));
+  }
+  .tv .prompt { font-size: calc(19 * var(--u)); min-height: calc(30 * var(--u)); }
+
+  /* --- the side column --- */
+  .tv-scores { gap: calc(10 * var(--u)); }
+  .tv-team {
+    gap: calc(12 * var(--u)); padding: calc(13 * var(--u)) calc(16 * var(--u));
+    border-radius: calc(14 * var(--u));
+  }
+  .tv-team-text { gap: calc(5 * var(--u)); }
+  .tv-team-name { font-size: calc(18 * var(--u)); }
+  .tv-team-match { font-size: calc(11 * var(--u)); }
+  .tv-team-tricks { gap: calc(4 * var(--u)); }
+  .tv-team-tricks .num { font-size: calc(46 * var(--u)); }
+  .tv-team-tricks .of { font-size: calc(14 * var(--u)); }
+
+  .tv .last-trick {
+    gap: calc(12 * var(--u)); padding: calc(12 * var(--u)); border-radius: calc(12 * var(--u));
+  }
+  .tv .last-trick .mini-row { gap: calc(6 * var(--u)); }
+  .tv .last-trick .caption { font-size: calc(13 * var(--u)); }
+  .tv .mini { width: calc(34 * var(--u)); border-radius: calc(5 * var(--u)); font-size: calc(12 * var(--u)); }
+  .tv .mini.won { box-shadow: 0 0 0 calc(2 * var(--u)) var(--team); }
+
+  .tv .log-section { gap: calc(9 * var(--u)); }
+  .tv .log-list { gap: calc(7 * var(--u)); }
+  .tv .log-line { font-size: calc(14 * var(--u)); gap: calc(9 * var(--u)); }
+  .tv .log-line .kind {
+    font-size: calc(10 * var(--u)); min-width: calc(46 * var(--u)); padding-top: calc(2 * var(--u));
+  }
+
+  /* --- lobby and results, in the stage --- */
+  .tv-lobby, .tv-result {
+    gap: calc(14 * var(--u));
+    width: 100%; max-width: calc(560 * var(--u)); margin: 0 auto;
+  }
+  .tv-bigcode { font-size: calc(70 * var(--u)); }
+  .tv .subtitle { font-size: calc(16 * var(--u)); }
+  .tv .seat-list { gap: calc(7 * var(--u)); }
+  .tv .seat-row {
+    gap: calc(12 * var(--u)); padding: calc(8 * var(--u)) calc(14 * var(--u));
+    min-height: calc(38 * var(--u)); border-radius: calc(10 * var(--u));
+    border-left-width: calc(4 * var(--u));
+  }
+  .tv .seat-index { font-size: calc(11 * var(--u)); min-width: calc(58 * var(--u)); }
+  .tv .seat-name { font-size: calc(19 * var(--u)); }
+  .tv .seat-tag {
+    font-size: calc(10 * var(--u));
+    padding: calc(3 * var(--u)) calc(6 * var(--u)); border-radius: calc(5 * var(--u));
+  }
+  .tv .card-panel {
+    padding: calc(13 * var(--u)) calc(16 * var(--u)); gap: calc(6 * var(--u));
+    border-radius: calc(14 * var(--u));
+  }
+  .tv .rule-hint { font-size: calc(14 * var(--u)); }
+  .tv-result .rule-hint { text-align: center; }
+  .tv .waiting-note { font-size: calc(15 * var(--u)); padding: calc(4 * var(--u)) 0; }
+
+  .tv .result-banner {
+    padding: calc(30 * var(--u)) calc(26 * var(--u)); gap: calc(9 * var(--u));
+    border-radius: calc(20 * var(--u));
+  }
+  .tv .result-kicker { font-size: calc(13 * var(--u)); }
+  .tv .result-headline { font-size: calc(44 * var(--u)); }
+  .tv .result-detail { font-size: calc(17 * var(--u)); }
+  /* Thirteen cells at this width are 514 across, inside the 560 the stage
+     gives them — so the strip never scrolls, which on a TV it could not. */
+  .tv .trick-strip { gap: calc(6 * var(--u)); padding: calc(4 * var(--u)) 0 calc(8 * var(--u)); justify-content: center; }
+  .tv .trick-cell {
+    width: calc(34 * var(--u)); gap: calc(5 * var(--u));
+    padding: calc(7 * var(--u)) calc(3 * var(--u)); border-radius: calc(8 * var(--u));
+  }
+  .tv .trick-cell .n { font-size: calc(11 * var(--u)); }
+  .tv .trick-cell .w { width: calc(12 * var(--u)); height: calc(12 * var(--u)); }
+}
+
 /* --- Footer -------------------------------------------------------------- */
 .site-foot {
   max-width: var(--maxw);

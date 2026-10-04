@@ -51,7 +51,7 @@ import {
 // module load — see the note at the top of that file. The screen layout is where
 // the anticlockwise rule is most likely to break unnoticed, so it gets tested
 // like everything else rather than eyeballed on a phone.
-import { SCREEN_SLOTS, seatPositions, slotOf, playableSelection } from '../js/ui.js';
+import { SCREEN_SLOTS, seatPositions, slotOf, playableSelection, teamLabel } from '../js/ui.js';
 // The stylesheet, the service worker and the manifest are all checked as TEXT
 // rather than parsed or executed — see the log-kind and PWA-shell sections for
 // why that is the right level of effort in each case.
@@ -291,6 +291,27 @@ section('Selection — the UI never offers a play the host will refuse');
   const laterHand = hand(['JD', true], ['7H', true]);
   eq(playableSelection(playableSelection('JD', { hand: mine, isTurn: true }), { hand: laterHand, isTurn: true }),
     null, 'once cleared it stays cleared — a stale pick cannot re-arm itself next trick');
+}
+
+// A watching screen has no seat, so it has no "we" and no "they" — it names a
+// team by the two people on it. That is the one piece of the TV view that is
+// about the GAME rather than the pixels: get the pairing wrong and the screen
+// the whole room is reading credits a deal to the wrong side.
+{
+  const seat = (name) => ({ name });
+  const pub = { seats: [seat('Asha'), seat('Bilal'), seat('Chitra'), seat('Dev')] };
+  eq(teamLabel(pub, 0), 'Asha & Chitra', 'team 0 is seats 0 and 2 — the two sitting opposite');
+  eq(teamLabel(pub, 1), 'Bilal & Dev', 'team 1 is seats 1 and 3');
+  for (const s of [0, 1, 2, 3]) {
+    ok(teamLabel(pub, teamOf(s)).includes(pub.seats[s].name) &&
+       teamLabel(pub, teamOf(s)).includes(pub.seats[partnerOf(s)].name),
+    `seat ${s} is named alongside its partner, never an opponent`);
+  }
+  eq(teamLabel({ seats: [seat('Asha'), null, null, null] }, 0), 'Asha',
+    'a half-filled lobby names whoever is there');
+  eq(teamLabel({ seats: [null, null, null, null] }, 1), 'Team 2',
+    'and an empty side falls back to a number rather than an empty string');
+  eq(teamLabel(pub, null), 'Nobody', 'no team is nobody — a drawn match has no winner to name');
 }
 
 // ===========================================================================
@@ -2783,6 +2804,41 @@ function wiredTable(config = null) {
   const spectator = stateFrameFor('conn-nobody', pub, privateFor);
   eq(spectator.priv, null, 'an unseated connection gets a frame with no private half');
   eq(spectator.pub, pub, 'but still sees the table');
+
+  // THE WATCHING SCREEN'S WHOLE PRIVACY MODEL IS THAT FRAME. A TV that dials in
+  // with WATCH is exactly this: a connection with no seat. It is put where all
+  // four players can see it, so what it must not carry is anything a player
+  // could use — and the frame is checked as the text that actually goes down
+  // the socket, because that is what a watcher with devtools open is reading.
+  const tvText = JSON.stringify(spectator);
+  eq(findKey(spectator, 'hand'), false, 'a watcher\'s frame has no hand in it, at any depth');
+  eq(findKey(spectator, 'trumpYouCalled'), false, 'nor the caller\'s private reminder of the rung');
+  ok(!tvText.includes('"trump":"H"'), 'nor the hidden rung under its public name');
+  let tvCards = 0;
+  for (const hand of e.hands) for (const code of hand) if (tvText.includes(`"${code}"`)) tvCards++;
+  eq(tvCards, 0, 'AND NOT ONE CARD STILL IN ANYBODY\'S HAND IS ON A WATCHING SCREEN');
+
+  // Seeing is all it can do. A watcher's id holds no seat and is not the
+  // owner, so every message that could change the game is refused by the same
+  // checks that refuse a stranger — there is no "spectator" branch in the
+  // engine to get wrong, which is the point of not having one.
+  const tvId = playerIdForConn('conn-nobody');
+  const before = JSON.stringify(e.serialize());
+  const attempts = {
+    playCard: { code: e.hands[e.turnSeat][0] },
+    declareTrump: { suit: 'S' },
+    setConfig: { config: { hiddenRung: false } },
+    addBot: { seat: 0 },
+    removeBot: { seat: 0 },
+    swapSeats: { a: 0, b: 1 },
+  };
+  let tvAccepted = 0;
+  for (const type of GAME_INTENTS) {
+    const { handled, result } = applyGameIntent(e, tvId, { type, ...(attempts[type] || {}) }, 0);
+    if (!handled || result.ok) tvAccepted++;
+  }
+  eq(tvAccepted, 0, `all ${GAME_INTENTS.length} game intents are refused from a watching screen`);
+  eq(JSON.stringify(e.serialize()), before, 'and not one of them moved the game');
 
   // And the frame is small enough to actually go down the wire. LOG_CAP in
   // state.js exists for this; if a frame ever exceeded the cap, decodePeerFrame
