@@ -30,8 +30,9 @@
 //   to localStorage and rehydrated after a host reload, it must behave
 //   identically under a browser tab and a future server, and the test suite
 //   plays thousands of deals as fast as it can. Time arrives as a parameter.
-//   The two dealing phases carry a `phaseAt` stamp and are advanced by tick(),
-//   which whoever owns the engine calls from the interval it already runs.
+//   The two dealing phases carry a `phaseAt` stamp, a completed trick carries a
+//   `trickAt` stamp, and all three are advanced by tick(), which whoever owns
+//   the engine calls from the interval it already runs.
 //
 // Node-safe: imports only rules.js, trick.js and cards.js, none of which touch
 // the DOM.
@@ -68,6 +69,19 @@ export const PHASES = Object.freeze({
  * eye ever sees and the phase machine would be lying about them.
  */
 export const DEAL_PAUSE_MS = 1000;
+
+/**
+ * How long a completed trick stays on the table before it is gathered in.
+ *
+ * The same mechanism as DEAL_PAUSE_MS, for the same reason. Without the hold
+ * the fourth card and the cleared table go out in one broadcast, so the card
+ * that decided the trick is the one card nobody at the table ever sees.
+ *
+ * Scoring waits for the hold as well: the trick count, the next lead and the
+ * end of the deal all happen when tick() gathers the trick in, so the numbers
+ * do not move while the cards that move them are still face up.
+ */
+export const TRICK_PAUSE_MS = 1200;
 
 /** Names for bots filling empty seats. Flavoured, and deliberately not
  *  human-looking, so nobody spends a deal wondering who they are playing. */
@@ -132,6 +146,9 @@ export class GameEngine {
     this.trickWinners = [];
     this.trick = [];               // [{ seat, code }] of the trick in progress
     this.turnSeat = 0;
+    // When the fourth card of `trick` landed. Only meaningful while the trick
+    // is full and waiting out TRICK_PAUSE_MS; see tick().
+    this.trickAt = 0;
 
     // Every completed trick this deal, oldest first, as
     // { plays: [{ seat, code }], winnerSeat, winnerTeam }.
@@ -246,8 +263,14 @@ export class GameEngine {
     return seat < 0 ? null : this.seats[seat];
   }
 
+  /** All four cards are down and the trick is being held on the table. Nobody
+   *  is on turn until tick() gathers it in. */
+  get trickComplete() {
+    return this.trick.length >= SEAT_COUNT;
+  }
+
   get currentPlayer() {
-    return this.phase === PHASES.PLAY ? this.seats[this.turnSeat] : null;
+    return this.phase === PHASES.PLAY && !this.trickComplete ? this.seats[this.turnSeat] : null;
   }
 
   /** Mark a device gone. The seat is KEPT — it is theirs to reclaim, and in a
@@ -374,6 +397,11 @@ export class GameEngine {
       this._enter(PHASES.PLAY, now);
       return true;
     }
+    if (this.phase === PHASES.PLAY && this.trickComplete
+        && now - this.trickAt >= TRICK_PAUSE_MS) {
+      this._resolveTrick(now);
+      return true;
+    }
     return false;
   }
 
@@ -422,10 +450,13 @@ export class GameEngine {
   // Trick play
   // =========================================================================
 
-  playCard(actorId, code) {
+  playCard(actorId, code, now = 0) {
     if (this.phase !== PHASES.PLAY) return { ok: false, error: 'No trick is in progress.' };
     const seat = this.seatOf(actorId);
     if (seat < 0) return { ok: false, error: 'You are not at this table.' };
+    // A full trick is still on the table. `turnSeat` is stale until tick()
+    // gathers it in, so this has to be asked before the turn is.
+    if (this.trickComplete) return { ok: false, error: 'The last trick is still on the table.' };
     if (seat !== this.turnSeat) return { ok: false, error: 'It is not your turn.' };
 
     const hand = this.hands[seat];
@@ -455,10 +486,14 @@ export class GameEngine {
       this.turnSeat = nextSeat(this.turnSeat);
       return { ok: true };
     }
-    return this._resolveTrick();
+    // The fourth card. NOT resolved here — it stays face up for TRICK_PAUSE_MS
+    // and tick() resolves it, or the last card of every trick would be cleared
+    // in the same broadcast that delivered it.
+    this.trickAt = now;
+    return { ok: true };
   }
 
-  _resolveTrick() {
+  _resolveTrick(now) {
     const winnerSeat = trickWinner(this.trick, this.trumpSuit);
     const winnerTeam = teamOf(winnerSeat);
 
@@ -478,9 +513,8 @@ export class GameEngine {
     // Seven of thirteen decides it, and the remaining tricks cannot change who
     // won — so play stops here rather than dealing out a settled hand.
     if (counts[0] >= TRICKS_TO_WIN || counts[1] >= TRICKS_TO_WIN) {
-      this._endDeal(counts[0] >= TRICKS_TO_WIN ? 0 : 1);
+      this._endDeal(counts[0] >= TRICKS_TO_WIN ? 0 : 1, now);
     }
-    return { ok: true };
   }
 
   _tricksWon() {
@@ -493,7 +527,7 @@ export class GameEngine {
   // Ending a deal
   // =========================================================================
 
-  _endDeal(winnerTeam) {
+  _endDeal(winnerTeam, now) {
     const court = courtTeam(this.trickWinners);
     if (court !== null) this.courts[court] += 1;
     this.dealsWon[winnerTeam] += 1;
@@ -544,12 +578,10 @@ export class GameEngine {
     }
 
     this.dealerSeat = nextDealerSeat;
-    // phaseAt is carried forward rather than restamped, because a deal ends
-    // inside playCard(), which has no `now` to stamp with — and does not need
-    // one: DEAL_OVER is left by an owner pressing a button, never by tick().
-    // If a timed auto-advance is ever added here, it needs a real stamp first
-    // or it will fire the instant the deal ends.
-    this._enter(PHASES.DEAL_OVER, this.phaseAt);
+    // A deal ends when tick() gathers in the deciding trick, so there is a real
+    // `now` to stamp with. Nothing reads it yet: DEAL_OVER is left by an owner
+    // pressing a button, never by tick().
+    this._enter(PHASES.DEAL_OVER, now);
   }
 
   /**
@@ -703,7 +735,9 @@ export class GameEngine {
       trickNumber: this.trickWinners.length + 1,
       tricksWon: this._tricksWon(),
 
-      turnSeat: this.phase === PHASES.PLAY ? this.turnSeat : null,
+      // Null while a completed trick is being held, as well as outside PLAY:
+      // nobody is on turn until it is gathered in.
+      turnSeat: this.phase === PHASES.PLAY && !this.trickComplete ? this.turnSeat : null,
       turnPlayerId: this.currentPlayer ? this.currentPlayer.id : null,
 
       courts: this.courts.slice(),
@@ -755,7 +789,7 @@ export class GameEngine {
     if (seat < 0) return null;
 
     const led = ledSuitOf(this.trick);
-    const isTurn = this.phase === PHASES.PLAY && seat === this.turnSeat;
+    const isTurn = this.phase === PHASES.PLAY && !this.trickComplete && seat === this.turnSeat;
 
     // Sorted with the trump the PLAYER is entitled to know — which under Hidden
     // Rung is nothing, even for the caller who chose it. Sort order is visible
@@ -822,6 +856,7 @@ export class GameEngine {
       trick: this.trick,
       tricks: this.tricks,
       turnSeat: this.turnSeat,
+      trickAt: this.trickAt,
       lastTrick: this.lastTrick,
       dealResult: this.dealResult,
       phaseAt: this.phaseAt,

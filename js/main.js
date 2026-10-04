@@ -137,10 +137,10 @@ const bots = createBotDriver();
 // ---------------------------------------------------------------------------
 // The host's clock
 //
-// 250ms rather than a second. Both jobs this drives have targets around a
-// second — DEAL_PAUSE_MS and the bot's thinking time — and polling four times
-// as often costs nothing measurable while removing up to a second of slop from
-// every phase change. It is not an animation frame loop: nothing here paints.
+// 250ms rather than a second. Every job this drives has a target around a
+// second — DEAL_PAUSE_MS, TRICK_PAUSE_MS and the bot's thinking time — and
+// polling four times as often costs nothing measurable while removing up to a
+// second of slop from every phase change. It is not an animation frame loop: nothing here paints.
 // ---------------------------------------------------------------------------
 const HOST_TICK_MS = 250;
 let hostTimer = null;

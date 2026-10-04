@@ -116,7 +116,7 @@ export function applyGameIntent(engine, actorId, msg, now = 0) {
       // whether it is a card.
       const code = validCardCode(msg.code);
       if (code === null) return done({ ok: false, error: 'That is not a card.' });
-      return done(engine.playCard(actorId, code));
+      return done(engine.playCard(actorId, code, now));
     }
 
     case 'declareTrump':

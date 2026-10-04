@@ -24,7 +24,7 @@ import {
 import {
   buildDeck, shuffle, dealPacket, dealAll, emptyHands, sortHand, suitCounts,
 } from '../js/cards.js';
-import { GameEngine, PHASES, DEAL_PAUSE_MS } from '../js/state.js';
+import { GameEngine, PHASES, DEAL_PAUSE_MS, TRICK_PAUSE_MS } from '../js/state.js';
 import {
   MAX_TYPE_LEN, MAX_FRAME_BYTES, MAX_RAW_NAME_LEN, TokenBucket,
   validEnvelope, validClientId, validPlayerId, validCardCode, validSuit,
@@ -692,6 +692,18 @@ function toPlay(e, { dealer, trump, hands = null }) {
   return e;
 }
 
+/**
+ * Let a completed trick be gathered in.
+ *
+ * A full trick is held on the table for TRICK_PAUSE_MS before it is scored, so
+ * anything that plays cards back to back has to let that time pass — exactly
+ * as it does for the two dealing phases. A no-op mid-trick, so it is safe to
+ * call after every card.
+ */
+function gather(e) {
+  if (e.trickComplete) e.tick(e.trickAt + TRICK_PAUSE_MS);
+}
+
 /** Play the deal out. `pick` chooses from the legal cards; the default takes
  *  the first, which is deterministic and enough for a rigged deal. */
 function playOut(e, pick = null) {
@@ -703,6 +715,7 @@ function playOut(e, pick = null) {
     const code = pick ? pick(e, seat, legal) : legal[0];
     const res = e.playCard(idAt(e, seat), code);
     if (!res.ok) throw new Error(`refused a legal play: ${res.error}`);
+    gather(e);
   }
 }
 
@@ -939,9 +952,27 @@ section('Trick play through the engine');
   e.playCard('p3', '2S');
   e.playCard('p2', '9S');
   eq(e.trick.length, 3, 'three cards down');
-  e.playCard('p1', 'KS');
+  e.playCard('p1', 'KS', 5000);
 
-  eq(e.trick.length, 0, 'the trick is cleared when the fourth card lands');
+  // THE HOLD. The fourth card stays face up for TRICK_PAUSE_MS, and nothing
+  // about the trick is settled until tick() gathers it in — otherwise the card
+  // that decided it is cleared in the same broadcast that delivered it, and
+  // nobody at the table ever sees it.
+  eq(e.trick.length, SEAT_COUNT, 'the fourth card STAYS ON THE TABLE when it lands');
+  eq(e.publicState().trick.length, SEAT_COUNT, 'and all four are in the broadcast');
+  eq(e.lastTrick, null, 'the trick is not yet anybody\'s');
+  same(e.publicState().tricksWon, [0, 0], 'and the count has not moved');
+  eq(e.publicState().turnSeat, null, 'nobody is on turn while it is held');
+  eq(e.currentPlayer, null, 'so the bot driver has nobody to move for');
+  ok([0, 1, 2, 3].every((s) => !e.privateStateFor(idAt(e, s)).isTurn),
+    'and no device is told it may play');
+  eq(e.playCard('p1', e.hands[1][0], 5000).ok, false, 'the winner-to-be cannot lead into a held trick');
+  eq(e.trick.length, SEAT_COUNT, 'and a refused card does not land on it');
+  eq(e.tick(5000 + TRICK_PAUSE_MS - 1), false, 'the hold is not cut a millisecond short');
+  eq(e.trick.length, SEAT_COUNT, 'still on the table');
+  eq(e.tick(5000 + TRICK_PAUSE_MS), true, 'and then the trick is gathered in');
+
+  eq(e.trick.length, 0, 'the table is cleared');
   eq(e.lastTrick.winnerSeat, 1, 'highest of the led suit takes it');
   eq(e.turnSeat, 1, 'and the winner leads the next trick');
   same(e.trickWinners, [teamOf(1)], 'the winning TEAM is recorded, in trick order');
@@ -1318,11 +1349,13 @@ section('Hidden Rung — the trump is not in the public state');
 
   // Tricks one and two: everybody follows spades, so nothing is revealed.
   e.playCard('p0', 'AS'); e.playCard('p3', '8S'); e.playCard('p2', 'TS'); e.playCard('p1', 'QS');
+  gather(e);
   eq(e.trumpHidden, true, 'following suit reveals nothing');
   eq(e.publicState().trump, null, 'so the trump is still concealed');
   eq(e.lastTrick.winnerSeat, 0, 'and the ace of spades took the trick normally');
 
   e.playCard('p0', 'KS'); e.playCard('p3', '7S'); e.playCard('p2', '9S'); e.playCard('p1', 'JS');
+  gather(e);
   eq(e.trumpHidden, true, 'still concealed after trick two');
 
   // Trick three: seat 0 leads a diamond. Seat 3 can follow; seat 2 cannot, and
@@ -1339,6 +1372,7 @@ section('Hidden Rung — the trump is not in the public state');
   // And the concealed trump was in force all along: seat 2's ace of hearts,
   // played as a discard, takes the trick off the ace of diamonds.
   e.playCard('p1', '2D');
+  gather(e);
   eq(e.lastTrick.winnerSeat, 2, 'the hidden trump won the trick it was played on');
   eq(e.turnSeat, 2, 'and its holder leads the next one');
 }
@@ -1840,6 +1874,12 @@ section('Intents — the dispatcher');
     const legal = legalPlays(e.hands[seat], ledSuitOf(e.trick));
     send(idAt(e, seat), { type: 'playCard', code: legal[0] });
     plays++;
+    // The dispatcher hands playCard the clock, so the hold is timed from the
+    // moment the fourth card arrived rather than from zero.
+    if (e.trickComplete) {
+      eq(e.trickAt, now, 'the dispatcher stamps a completed trick with the time it was given');
+      now += TRICK_PAUSE_MS; e.tick(now);
+    }
   }
 
   eq(refused, 0, 'not one legal message was refused along the way');
@@ -1948,6 +1988,7 @@ function lay(e, ...codes) {
   for (const code of codes) {
     const res = e.playCard(idAt(e, e.turnSeat), code);
     if (!res.ok) throw new Error(`rigged play refused: ${code} — ${res.error}`);
+    gather(e);
   }
 }
 
@@ -2775,6 +2816,7 @@ function wiredTable(config = null) {
     const seat = e.turnSeat;
     const legal = legalPlays(e.hands[seat], ledSuitOf(e.trick));
     e.playCard(e.seats[seat].id, legal[0]);
+    gather(e);
   }
   eq(e.phase, PHASES.DEAL_OVER, 'setup: a whole deal is in the log');
   const pub = e.publicState();
@@ -3066,6 +3108,7 @@ for (const hiddenRung of [false, true]) {
 
       const held = e.hands.reduce((a, h) => a + h.length, 0);
       if (held + e.trick.length + SEAT_COUNT * e.trickWinners.length !== DECK_SIZE) lostCards = true;
+      gather(e);
       if (e.trickWinners.length > before) tricks++;
       continue;
     }
@@ -3185,6 +3228,7 @@ for (const matchMode of ['race', 'deals']) {
       // Conservation: nothing is created and nothing is dropped.
       const held = e.hands.reduce((a, h) => a + h.length, 0);
       if (held + e.trick.length + SEAT_COUNT * e.trickWinners.length !== DECK_SIZE) lostCards = true;
+      gather(e);
       if (e.trickWinners.length > before) tricksPlayed++;
       continue;
     }

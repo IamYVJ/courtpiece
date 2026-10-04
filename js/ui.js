@@ -33,7 +33,7 @@ import {
   rankLabel, suitGlyph, suitName, cardName, isRedCard, isRedSuit, suitOf,
 } from './rules.js';
 import { PHASES } from './state.js';
-import { teamOf, winningCard } from './trick.js';
+import { teamOf, trickWinner, winningCard } from './trick.js';
 
 // ---------------------------------------------------------------------------
 // Screen geometry
@@ -850,12 +850,15 @@ function trickGrid(app, mySeat, myTeam) {
 
     const code = plays[idx].code;
     const winning = seat === leadSeat;
+    // All four down: the engine is holding the trick on the table for a beat
+    // before gathering it in, and "currently" would be the wrong word for it.
+    const settled = plays.length >= SEAT_COUNT;
     return el('li', { class: `trick-slot ${position}` },
       el('div', {
         class: ['played', isRedCard(code) ? 'red' : '', winning ? 'winning' : ''].filter(Boolean).join(' '),
         style: teamStyle(teamOf(seat), myTeam),
         'aria-label': `${seat === mySeat ? 'You' : (who ? who.name : 'Seat')} played `
-          + `${cardName(code)}${winning ? ', currently winning' : ''}`,
+          + `${cardName(code)}${winning ? (settled ? ', takes the trick' : ', currently winning') : ''}`,
       },
         ...face(code),
         // Play order, so a glance at a part-played trick says who led.
@@ -915,6 +918,17 @@ function promptLine(app, priv) {
     return el('p', { class: 'prompt you' }, canFollow
       ? `Follow ${suitName(pub.ledSuit)}.`
       : `No ${suitName(pub.ledSuit)} — play anything. You do not have to trump.`);
+  }
+
+  // A full trick held on the table: nobody is on turn, so say who took it
+  // rather than "Waiting…" for nobody. Computed here for the same reason, and
+  // with the same Hidden Rung safety, as the highlight in trickGrid().
+  const plays = pub.trick || [];
+  if (plays.length >= SEAT_COUNT) {
+    const taker = trickWinner(plays, pub.trump);
+    if (priv && taker === priv.seat) return el('p', { class: 'prompt you' }, 'You take the trick.');
+    const name = taker === null || !pub.seats[taker] ? null : pub.seats[taker].name;
+    return el('p', { class: 'prompt' }, name ? `${name} takes the trick.` : 'Trick taken.');
   }
 
   const who = pub.turnSeat === null ? null : pub.seats[pub.turnSeat];
